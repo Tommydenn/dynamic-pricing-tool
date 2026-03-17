@@ -1079,7 +1079,8 @@ function getGmailToken() {
 
 async function sendViaGmailApi(toList, subject, htmlBody) {
   // If no client ID configured, fall back to mailto
-  if (!GMAIL_OAUTH_CLIENT_ID || GMAIL_OAUTH_CLIENT_ID === "GMAIL_CLIENT_ID_PLACEHOLDER") {
+  if (!GMAIL_OAUTH_CLIENT_ID || GMAIL_OAUTH_CLIENT_ID === "381807133072-10chhdc8en55g01t5hn54qd54b8l4kq6.apps.googleusercontent.com
+") {
     var plain = subject + "\n\nView attached Excel in SharePoint for full pricing data.";
     var link = "mailto:" + toList.join(",")
       + "?subject=" + encodeURIComponent(subject)
