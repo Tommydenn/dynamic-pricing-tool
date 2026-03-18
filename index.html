@@ -833,12 +833,11 @@ async function getMsToken() {
 // ── Build Excel (XLSX) via SheetJS ────────────────────────────────────────────
 function loadSheetJS(cb) {
   if (window.ExcelJS) { cb(); return; }
+  if (window.XLSX) { cb(); return; }
   var s = document.createElement("script");
   s.src = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
   s.onload = cb;
   s.onerror = function() {
-    console.error("ExcelJS failed to load");
-    // Fallback to basic XLSX
     var s2 = document.createElement("script");
     s2.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
     s2.onload = cb;
@@ -847,121 +846,86 @@ function loadSheetJS(cb) {
   document.head.appendChild(s);
 }
 
-function buildXlsx() {
+async function buildXlsx() {
   var sorted = units.slice().sort(function(a,b){
     var co = ({IL:0,MC:1,CS:2}[a.care]||0) - ({IL:0,MC:1,CS:2}[b.care]||0);
     return co !== 0 ? co : a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
   var fees = getFees(currentCommunity);
 
-  // Use ExcelJS for styled output
   if (window.ExcelJS) {
     var wb = new ExcelJS.Workbook();
     wb.creator = "Rate Sheet Tool";
     var ws = wb.addWorksheet(currentCommunity.substring(0,31));
-
-    // Colors matching the app
-    var ilColor = "185FA5"; var alColor = "8B4513"; var mcColor = "6B3A8A"; var csColor = "7A4A00";
-    var ilBg = "E6F1FB"; var alBg = "FDF3EC"; var mcBg = "F3EDF9"; var csBg = "FDF4E3";
-    var headerBg = "1A1816"; var headerFont = "F7F5F0";
-    var borderColor = "D8D4CC";
-    var thinBorder = { style: "thin", color: { argb: borderColor } };
-    var allBorders = { top: thinBorder, bottom: thinBorder, left: thinBorder, right: thinBorder };
-
-    // Header row
-    var headers = ["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"];
-    var headerRow = ws.addRow(headers);
-    headerRow.height = 24;
-    headerRow.eachCell(function(cell, colNum) {
-      cell.font = { bold: true, size: 10, color: { argb: headerFont }, name: "Calibri" };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: headerBg } };
-      cell.alignment = { vertical: "middle", horizontal: "center" };
-      cell.border = allBorders;
-      // Color-code rate headers
-      if (colNum === 10) { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "1A4A7A" } }; }
-      if (colNum === 11) { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "6B3510" } }; }
-      if (colNum === 12) { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "4A2A6A" } }; }
-      if (colNum === 13) { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "5A3A00" } }; }
+    var ilC = "185FA5", alC = "8B4513", mcC = "6B3A8A", csC = "7A4A00";
+    var hdrBg = "1A1816", hdrFt = "F7F5F0";
+    var bdr = {style:"thin", color:{argb:"D8D4CC"}};
+    var borders = {top:bdr, bottom:bdr, left:bdr, right:bdr};
+    var hdrs = ["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"];
+    var hRow = ws.addRow(hdrs);
+    hRow.height = 24;
+    hRow.eachCell(function(c,n){
+      c.font = {bold:true, size:10, color:{argb:hdrFt}, name:"Calibri"};
+      c.fill = {type:"pattern", pattern:"solid", fgColor:{argb:hdrBg}};
+      c.alignment = {vertical:"middle", horizontal:"center"};
+      c.border = borders;
+      if(n===10) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"1A4A7A"}};
+      if(n===11) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"6B3510"}};
+      if(n===12) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"4A2A6A"}};
+      if(n===13) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"5A3A00"}};
     });
-
-    // Data rows
-    sorted.forEach(function(u, idx) {
-      var s2 = selections[sk(u.unit,u.care)] || {};
-      var tk = s2.tier || tierForWtd(u.wtdAvg);
+    sorted.forEach(function(u, idx){
+      var sel = selections[sk(u.unit,u.care)] || {};
+      var tk = sel.tier || tierForWtd(u.wtdAvg);
       var t = tierObj(tk);
       var pBase = u.care==="IL"?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-      var ilV = u[t.ilF], alV = u[t.alF], mcV = u[t.mcF], csV = u[t.csF];
-
       var row = ws.addRow([
         currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
-        u.sqft ? Math.round(u.sqft) : "",
-        u.wtdAvg !== null ? Math.round(u.wtdAvg*100) + "%" : "",
-        pBase || "", t.label,
-        ilV||"", alV||"", mcV||"", csV||""
+        u.sqft?Math.round(u.sqft):"",
+        u.wtdAvg!==null?Math.round(u.wtdAvg*100)+"%":"",
+        pBase||"", t.label,
+        u[t.ilF]||"", u[t.alF]||"", u[t.mcF]||"", u[t.csF]||""
       ]);
-
-      // Row background based on care type
-      var rowBg = idx % 2 === 0 ? "FFFFFF" : "FAFAF8";
-      if (u.care === "MC") rowBg = idx % 2 === 0 ? "FDFBFF" : "F7F2FC";
-      if (u.care === "CS") rowBg = idx % 2 === 0 ? "FFFDF6" : "FDF7E8";
-
-      row.eachCell(function(cell, colNum) {
-        cell.font = { size: 10, name: "Calibri" };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
-        cell.border = allBorders;
-        cell.alignment = { vertical: "middle" };
-        // Currency formatting for rate columns
-        if (colNum >= 8 && colNum !== 9) {
-          if (cell.value && typeof cell.value === "number") {
-            cell.numFmt = "$#,##0";
-            cell.font = { size: 10, name: "Consolas", bold: true };
-            if (colNum === 10) cell.font.color = { argb: ilColor };
-            if (colNum === 11) cell.font.color = { argb: alColor };
-            if (colNum === 12) cell.font.color = { argb: mcColor };
-            if (colNum === 13) cell.font.color = { argb: csColor };
-          }
+      var bg = idx%2===0?"FFFFFF":"FAFAF8";
+      if(u.care==="MC") bg=idx%2===0?"FDFBFF":"F7F2FC";
+      if(u.care==="CS") bg=idx%2===0?"FFFDF6":"FDF7E8";
+      row.eachCell(function(c,n){
+        c.font={size:10,name:"Calibri"};
+        c.fill={type:"pattern",pattern:"solid",fgColor:{argb:bg}};
+        c.border=borders;
+        c.alignment={vertical:"middle"};
+        if(n>=8&&n!==9&&c.value&&typeof c.value==="number"){
+          c.numFmt="$#,##0";
+          c.font={size:10,name:"Consolas",bold:true};
+          if(n===10)c.font.color={argb:ilC};
+          if(n===11)c.font.color={argb:alC};
+          if(n===12)c.font.color={argb:mcC};
+          if(n===13)c.font.color={argb:csC};
         }
-        // Care column badge coloring
-        if (colNum === 3) {
-          cell.alignment = { horizontal: "center", vertical: "middle" };
-          cell.font = { size: 9, bold: true, name: "Calibri" };
-          if (u.care === "IL") { cell.font.color = { argb: ilColor }; }
-          if (u.care === "MC") { cell.font.color = { argb: mcColor }; }
-          if (u.care === "CS") { cell.font.color = { argb: csColor }; }
+        if(n===3){c.alignment={horizontal:"center",vertical:"middle"};c.font={size:9,bold:true,name:"Calibri"};
+          if(u.care==="IL")c.font.color={argb:ilC};
+          if(u.care==="MC")c.font.color={argb:mcC};
+          if(u.care==="CS")c.font.color={argb:csC};
         }
-        // Tier column
-        if (colNum === 9) { cell.alignment = { horizontal: "center" }; cell.font = { size: 9, name: "Calibri", bold: true }; }
+        if(n===9){c.alignment={horizontal:"center"};c.font={size:9,name:"Calibri",bold:true};}
       });
     });
-
-    // Column widths
-    ws.columns = [
-      {width:22},{width:10},{width:7},{width:14},{width:22},{width:9},{width:10},{width:12},{width:9},{width:12},{width:12},{width:12},{width:12}
-    ];
-
-    // Freeze header row
-    ws.views = [{ state: "frozen", ySplit: 1 }];
-
-    // Return promise for async ExcelJS write
-    return wb.xlsx.writeBuffer();
+    ws.columns=[{width:22},{width:10},{width:7},{width:14},{width:22},{width:9},{width:10},{width:12},{width:9},{width:12},{width:12},{width:12},{width:12}];
+    ws.views=[{state:"frozen",ySplit:1}];
+    return await wb.xlsx.writeBuffer();
   }
 
-  // Fallback to basic XLSX if ExcelJS didn't load
+  // Fallback: basic SheetJS
   var rows = [["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]];
-  sorted.forEach(function(u) {
-    var s3 = selections[sk(u.unit,u.care)] || {};
-    var tk = s3.tier || tierForWtd(u.wtdAvg);
-    var t = tierObj(tk);
-    var pBase = u.care==="IL"?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-    rows.push([currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
-      u.sqft?Math.round(u.sqft):"", u.wtdAvg!==null?Math.round(u.wtdAvg*100)/100:"",
-      pBase||"", t.label, u[t.ilF]||"", u[t.alF]||"", u[t.mcF]||"", u[t.csF]||""]);
+  sorted.forEach(function(u){
+    var s2=selections[sk(u.unit,u.care)]||{};var tk=s2.tier||tierForWtd(u.wtdAvg);var t=tierObj(tk);
+    var pBase=u.care==="IL"?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    rows.push([currentCommunity,u.unit,u.care,u.type,u.floorplan||"",u.sqft?Math.round(u.sqft):"",u.wtdAvg!==null?Math.round(u.wtdAvg*100)/100:"",pBase||"",t.label,u[t.ilF]||"",u[t.alF]||"",u[t.mcF]||"",u[t.csF]||""]);
   });
-  var wb2 = XLSX.utils.book_new();
-  var ws2 = XLSX.utils.aoa_to_sheet(rows);
-  ws2["!cols"] = [20,10,6,14,20,8,10,12,8,12,12,12,12].map(function(w){return{wch:w};});
-  XLSX.utils.book_append_sheet(wb2, ws2, currentCommunity.substring(0,31));
-  return XLSX.write(wb2, {bookType:"xlsx", type:"array"});
+  var wb2=XLSX.utils.book_new();var ws2=XLSX.utils.aoa_to_sheet(rows);
+  ws2["!cols"]=[20,10,6,14,20,8,10,12,8,12,12,12,12].map(function(w){return{wch:w};});
+  XLSX.utils.book_append_sheet(wb2,ws2,currentCommunity.substring(0,31));
+  return XLSX.write(wb2,{bookType:"xlsx",type:"array"});
 }
 
 // ── Upload to SharePoint via Graph API ────────────────────────────────────────
@@ -1128,13 +1092,12 @@ async function runPublish() {
   setProgress("Starting publish workflow\u2026");
 
   var spResult = null;
-  var xlsxData = null;
 
   // Step 1: Build Excel
   setProgress("Step 1 / 3 &mdash; Building Excel file\u2026");
   try {
     await new Promise(function(res, rej){ loadSheetJS(function(){ res(); }); });
-    xlsxData = await buildXlsx();
+    var xlsxData = await buildXlsx();
 
     // Step 2: Upload to SharePoint
     setProgress("Step 2 / 3 &mdash; Uploading to SharePoint\u2026");
@@ -1158,7 +1121,7 @@ async function runPublish() {
   try {
     // Try to use window.sendEmail if the parent has wired it up
     if (typeof window.sendEmailViaGmail === "function") {
-      await window.sendEmailViaGmail(emails, subject, emailHtml, xlsxData, currentCommunity);
+      await window.sendEmailViaGmail(emails, subject, emailHtml);
       setEmailStatus("success", "\u2713 Email sent to " + emails.length + " recipient(s)");
     } else {
       // Fallback: open mailto with summary (HTML body won't render but gives info)
@@ -1277,49 +1240,10 @@ function buildRFC2822(toList, subject, htmlBody) {
 }
 
 // Override the Gmail call in runPublish
-window.sendEmailViaGmail = async function(emails, subject, htmlBody, xlsxData, communityName) {
+window.sendEmailViaGmail = async function(emails, subject, htmlBody) {
   var token = await getMsToken();
   var toRecipients = emails.map(function(e) {
     return { emailAddress: { address: e.trim() } };
-  });
-  var payload = {
-    message: {
-      subject: subject,
-      body: { contentType: "HTML", content: htmlBody },
-      toRecipients: toRecipients
-    },
-    saveToSentItems: true
-  };
-  // Attach Excel file if available
-  if (xlsxData) {
-    var bytes = new Uint8Array(xlsxData);
-    var binary = "";
-    for (var i = 0; i < bytes.length; i++) { binary += String.fromCharCode(bytes[i]); }
-    var b64 = btoa(binary);
-    var now = new Date();
-    var pad = function(n){return n<10?"0"+n:n;};
-    var ts = now.getFullYear()+"-"+pad(now.getMonth()+1)+"-"+pad(now.getDate());
-    var safeName = (communityName || "RateSheet").replace(/[\/\\:*?"<>|]/g,"_");
-    payload.message.attachments = [{
-      "@odata.type": "#microsoft.graph.fileAttachment",
-      name: safeName + "_RateSheet_" + ts + ".xlsx",
-      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      contentBytes: b64
-    }];
-  }
-  var resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + token,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
-  if (!resp.ok && resp.status !== 202) {
-    var err = await resp.json().catch(function() { return {}; });
-    throw new Error(err.error && err.error.message ? err.error.message : "Outlook send failed (" + resp.status + ")");
-  }
-};
   });
   var payload = {
     message: {
