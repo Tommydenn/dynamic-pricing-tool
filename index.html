@@ -846,57 +846,77 @@ function loadSheetJS(cb) {
   document.head.appendChild(s);
 }
 
-function loadHtml2Pdf(cb) {
-  if (window.html2pdf) { cb(); return; }
-  var s = document.createElement("script");
-  s.src = "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js";
-  s.onload = cb;
-  s.onerror = function() { console.error("html2pdf load failed"); cb(); };
-  document.head.appendChild(s);
+function loadJsPdf(cb) {
+  if (window.jspdf && window.jspdf.jsPDF) { cb(); return; }
+  var s1 = document.createElement("script");
+  s1.src = "https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js";
+  s1.onload = function() {
+    var s2 = document.createElement("script");
+    s2.src = "https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.4/dist/jspdf.plugin.autotable.min.js";
+    s2.onload = cb;
+    s2.onerror = function() { console.error("autoTable failed"); cb(); };
+    document.head.appendChild(s2);
+  };
+  s1.onerror = function() { console.error("jsPDF failed"); cb(); };
+  document.head.appendChild(s1);
 }
 
 async function generatePdf() {
-  await new Promise(function(res) { loadHtml2Pdf(res); });
-  if (!window.html2pdf) return null;
-  var el = document.querySelector(".print-sheet");
-  if (!el) return null;
-
-  // Clone element to avoid overflow/scroll issues with html2canvas
-  var clone = el.cloneNode(true);
-  clone.style.position = "absolute";
-  clone.style.left = "-9999px";
-  clone.style.top = "0";
-  clone.style.width = el.scrollWidth + "px";
-  clone.style.overflow = "visible";
-  clone.style.overflowX = "visible";
-  clone.style.boxShadow = "none";
-  clone.style.borderRadius = "0";
-  clone.style.border = "none";
-  document.body.appendChild(clone);
-
-  window.scrollTo(0, 0);
-
-  try {
-    var result = await html2pdf().set({
-      margin: [0.3, 0.2, 0.3, 0.2],
-      image: { type: "jpeg", quality: 0.95 },
-      html2canvas: {
-        scale: 1.5,
-        useCORS: true,
-        logging: false,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: clone.scrollWidth + 40
-      },
-      jsPDF: { unit: "in", format: "letter", orientation: "landscape" },
-      pagebreak: { mode: ["avoid-all", "css", "legacy"] }
-    }).from(clone).outputPdf("blob");
-    return result;
-  } finally {
-    document.body.removeChild(clone);
-  }
+  await new Promise(function(res) { loadJsPdf(res); });
+  if (!window.jspdf || !window.jspdf.jsPDF) return null;
+  var doc = new jspdf.jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+  var pw = doc.internal.pageSize.getWidth();
+  var ph = doc.internal.pageSize.getHeight();
+  var fees = getFees(currentCommunity);
+  var now = new Date();
+  var dateStr = now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  var fmtM = function(n) { return (n===null||n===undefined||isNaN(n)) ? "\u2014" : "$" + Math.round(n).toLocaleString(); };
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text(currentCommunity, 40, 40);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(107, 103, 96);
+  doc.text("2026 DYNAMIC PRICING RATE SHEET", 40, 56);
+  doc.text(units.length + " units", 40, 68);
+  doc.setFontSize(8); doc.text("GENERATED", pw - 40, 30, { align: "right" });
+  doc.setFontSize(10); doc.setTextColor(26, 24, 22); doc.text(dateStr, pw - 40, 44, { align: "right" });
+  doc.setFontSize(8); doc.setTextColor(107, 103, 96);
+  var feeText = [];
+  if (fees.al) feeText.push("AL fee +$" + fees.al.toLocaleString());
+  if (fees.mc) feeText.push("MC fee +$" + fees.mc.toLocaleString());
+  if (feeText.length) doc.text(feeText.join("  \u00B7  "), pw - 40, 58, { align: "right" });
+  doc.setDrawColor(26, 24, 22); doc.setLineWidth(1.5); doc.line(40, 74, pw - 40, 74);
+  doc.setFontSize(7); doc.setTextColor(160, 157, 152); doc.text("TIERS:", 44, 88);
+  var dots = [{c:[192,112,144],l:"Base"},{c:[192,120,48],l:"+5%"},{c:[26,106,154],l:"+10%"},{c:[45,90,61],l:"+15%"}];
+  var dx = 80;
+  dots.forEach(function(d) { doc.setFillColor(d.c[0],d.c[1],d.c[2]); doc.circle(dx,85,3,"F"); doc.setTextColor(107,103,96); doc.text(d.l,dx+6,88); dx+=40; });
+  var sorted = units.slice().sort(function(a,b) { var co=({IL:0,MC:1,CS:2}[a.care]||0)-({IL:0,MC:1,CS:2}[b.care]||0); return co!==0?co:a.unit.localeCompare(b.unit,undefined,{numeric:true}); });
+  var head = [["UNIT","CARE","TYPE","FLOORPLAN","SQ FT","WTD%","BASE RATE","TIER","IL RATE","AL RATE","MC RATE","CS RATE"]];
+  var body = sorted.map(function(u) {
+    var sel=selections[sk(u.unit,u.care)]||{}; var tk=sel.tier||tierForWtd(u.wtdAvg); var t=tierObj(tk);
+    var pBase=u.care==="IL"?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    return [u.unit,u.care,u.type,u.floorplan||"",u.sqft?Math.round(u.sqft).toString():"",u.wtdAvg!==null?Math.round(u.wtdAvg*100)+"%":"",fmtM(pBase),t.label,fmtM(u[t.ilF]),fmtM(u[t.alF]),fmtM(u[t.mcF]),fmtM(u[t.csF])];
+  });
+  var ilC=[24,95,165],alC=[139,69,19],mcC=[107,58,138],csC=[122,74,0];
+  doc.autoTable({
+    head:head, body:body, startY:96, margin:{left:40,right:40},
+    styles:{fontSize:8,cellPadding:4,font:"helvetica",textColor:[26,24,22],lineColor:[216,212,204],lineWidth:0.5},
+    headStyles:{fillColor:[240,237,230],textColor:[107,103,96],fontStyle:"bold",fontSize:7,halign:"center"},
+    columnStyles:{0:{halign:"center",fontStyle:"bold",cellWidth:45},1:{halign:"center",cellWidth:38},2:{cellWidth:62},3:{cellWidth:120},4:{halign:"center",cellWidth:42},5:{halign:"center",cellWidth:42},6:{halign:"center",fontStyle:"bold",cellWidth:62},7:{halign:"center",fontStyle:"bold",cellWidth:42},8:{halign:"center",fontStyle:"bold",cellWidth:60},9:{halign:"center",fontStyle:"bold",cellWidth:60},10:{halign:"center",fontStyle:"bold",cellWidth:60},11:{halign:"center",fontStyle:"bold",cellWidth:60}},
+    didParseCell:function(data) {
+      if(data.section!=="body"){if(data.column.index===8)data.cell.styles.textColor=ilC;if(data.column.index===9)data.cell.styles.textColor=alC;if(data.column.index===10)data.cell.styles.textColor=mcC;if(data.column.index===11)data.cell.styles.textColor=csC;return;}
+      var care=data.row.raw[1];
+      if(care==="MC")data.cell.styles.fillColor=data.row.index%2===0?[253,251,255]:[247,242,252];
+      else if(care==="CS")data.cell.styles.fillColor=data.row.index%2===0?[255,253,246]:[253,247,232];
+      else data.cell.styles.fillColor=data.row.index%2===0?[255,255,255]:[250,250,248];
+      if(data.column.index===1){if(care==="IL")data.cell.styles.textColor=ilC;if(care==="MC")data.cell.styles.textColor=mcC;if(care==="CS")data.cell.styles.textColor=csC;}
+      if(data.column.index===8)data.cell.styles.textColor=ilC;if(data.column.index===9)data.cell.styles.textColor=alC;if(data.column.index===10)data.cell.styles.textColor=mcC;if(data.column.index===11)data.cell.styles.textColor=csC;
+    },
+    didDrawPage:function(data) {
+      doc.setFontSize(7); doc.setTextColor(160,157,152);
+      doc.text("2026 Budget Rates \u00B7 Confidential",pw/2,ph-20,{align:"center"});
+      doc.text(doc.internal.getCurrentPageInfo().pageNumber+" / "+doc.internal.getNumberOfPages(),pw-40,ph-20,{align:"right"});
+    }
+  });
+  return doc.output("blob");
 }
-
 async function uploadPdfToSharePoint(pdfBlob, filename) {
   var token = await getMsToken();
   var siteResp = await fetch("https://graph.microsoft.com/v1.0/sites/" + SP_SITE_HOSTNAME + ":" + SP_SITE_PATH,
@@ -1181,16 +1201,7 @@ async function runPublish() {
   // Generate PDF
   try {
     setProgress("Generating PDF\u2026");
-    var ratesP = document.getElementById("page-rates");
-    var printP = document.getElementById("page-print");
-    var printC = document.getElementById("print-content");
-    var wasRates = ratesP && ratesP.classList.contains("active");
-    if (ratesP) ratesP.classList.remove("active");
-    if (printP) printP.classList.add("active");
-    if (printC) printC.style.display = "block";
-    buildPrintSheet();
     pdfBlob = await generatePdf();
-    if (wasRates) { if (printP) printP.classList.remove("active"); if (ratesP) ratesP.classList.add("active"); }
     if (pdfBlob && spResult) {
       var pdfName = spResult.filename.replace(".xlsx", ".pdf");
       setProgress("Uploading PDF to SharePoint\u2026");
