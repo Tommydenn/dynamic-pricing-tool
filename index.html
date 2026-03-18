@@ -123,10 +123,9 @@ tbody td{padding:9px 12px;vertical-align:middle}
   <button class="nav-item" onclick="goTo('print')" id="nav-print"><span class="nav-step">2</span> Print &amp; Finalize</button>
   <div class="sidebar-legend">
     <div class="legend-title">Wtd. avg &rarr; default tier</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#c07090"></span> &lt;85% &rarr; Base</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#c07830"></span> 85&ndash;90% &rarr; +5%</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#1a6a9a"></span> 90&ndash;95% &rarr; +10%</div>
-    <div class="legend-item"><span class="legend-dot" style="background:#2D5A3D"></span> 95%+ &rarr; +15%</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#c07090"></span> &lt;90% &rarr; Base</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#c07830"></span> 90&ndash;95% &rarr; +5%</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#1a6a9a"></span> 95%+ &rarr; +10%</div>
   </div>
   <div id="comm-badge" style="display:none" class="community-badge">
     <strong id="sb-comm-name"></strong>
@@ -149,7 +148,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       </div>
       <div style="display:flex;gap:8px;flex-shrink:0">
         <button class="btn btn-sm" onclick="resetToDefaults()">Reset to defaults</button>
-        <button class="btn btn-primary btn-sm" onclick="goTo('print')">Preview print &rarr;</button>
+        <button class="btn btn-primary btn-sm" onclick="goTo('print')">Finalize &amp; Send &rarr;</button>
       </div>
     </div>
     <div class="community-select-wrap">
@@ -209,7 +208,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
   </div>
   <div class="page" id="page-print">
     <div class="page-header">
-      <div><h1 class="page-title">Print &amp; Finalize</h1><p class="page-desc">Review finalized rates, print your sheet, and publish to the team.</p></div>
+      <div><h1 class="page-title">Finalize &amp; Send</h1><p class="page-desc">Review rates, publish to SharePoint, and notify the team.</p></div>
     </div>
     <div id="print-empty" class="empty-state">
       <span class="empty-state-icon">&#128203;</span>
@@ -222,6 +221,35 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <button class="btn" onclick="goTo('rates')">&larr; Back to rates</button>
         <button class="btn btn-primary" onclick="window.print()">&#128424; Print / Save PDF</button>
       </div>
+      <!-- PUBLISH PANEL -->
+      <div class="publish-panel" id="publish-panel">
+        <div class="publish-panel-title">&#128228; Publish &amp; Notify</div>
+        <p class="publish-panel-desc">Upload a timestamped Excel + PDF to SharePoint and email the team with a summary and pricing table.</p>
+        <div class="publish-grid">
+          <div class="publish-section">
+            <div class="publish-section-label label-email"><span>@</span> Email recipients</div>
+            <textarea class="publish-input" id="pub-emails" rows="3" placeholder="email@example.com, another@example.com&#10;(comma-separated)"></textarea>
+            <div class="publish-status status-idle" id="email-status">Ready to send</div>
+          </div>
+          <div class="publish-section">
+            <div class="publish-section-label label-sp"><span>&#9729;</span> SharePoint upload</div>
+            <div style="font-size:12px;color:var(--text-secondary);padding:10px 12px;background:var(--surface2);border-radius:var(--radius);line-height:1.6">
+              <strong style="display:block;margin-bottom:2px">Target folder</strong>
+              Dynamic Pricing Files &mdash; Tommy's Team<br>
+              <span style="color:var(--text-tertiary);font-size:11px">greatlakesmc.sharepoint.com</span>
+            </div>
+            <div class="publish-status status-idle" id="sp-status">Ready to upload</div>
+          </div>
+        </div>
+        <div class="publish-actions">
+          <div class="publish-progress" id="pub-progress"></div>
+          <button class="btn" onclick="resetPublish()">&#10227; Reset</button>
+          <button class="btn btn-publish" id="pub-btn" onclick="runPublish()">&#128228; Publish &amp; Notify</button>
+        </div>
+      </div>
+
+
+
       <div class="print-sheet">
         <div class="sheet-header">
           <div>
@@ -258,33 +286,6 @@ tbody td{padding:9px 12px;vertical-align:middle}
         </div>
       </div>
     </div>
-
-      <!-- PUBLISH PANEL -->
-      <div class="publish-panel" id="publish-panel">
-        <div class="publish-panel-title">&#128228; Publish &amp; Notify</div>
-        <p class="publish-panel-desc">Upload a timestamped Excel file to SharePoint and email the team with a summary and pricing table.</p>
-        <div class="publish-grid">
-          <div class="publish-section">
-            <div class="publish-section-label label-email"><span>@</span> Email recipients</div>
-            <textarea class="publish-input" id="pub-emails" rows="3" placeholder="email@example.com, another@example.com&#10;(comma-separated)"></textarea>
-            <div class="publish-status status-idle" id="email-status">Ready to send</div>
-          </div>
-          <div class="publish-section">
-            <div class="publish-section-label label-sp"><span>&#9729;</span> SharePoint upload</div>
-            <div style="font-size:12px;color:var(--text-secondary);padding:10px 12px;background:var(--surface2);border-radius:var(--radius);line-height:1.6">
-              <strong style="display:block;margin-bottom:2px">Target folder</strong>
-              Dynamic Pricing Files &mdash; Tommy's Team<br>
-              <span style="color:var(--text-tertiary);font-size:11px">greatlakesmc.sharepoint.com</span>
-            </div>
-            <div class="publish-status status-idle" id="sp-status">Ready to upload</div>
-          </div>
-        </div>
-        <div class="publish-actions">
-          <div class="publish-progress" id="pub-progress"></div>
-          <button class="btn" onclick="resetPublish()">&#10227; Reset</button>
-          <button class="btn btn-publish" id="pub-btn" onclick="runPublish()">&#128228; Publish &amp; Notify</button>
-        </div>
-      </div>
 
   </div>
 </main>
@@ -398,10 +399,9 @@ function loadCommunity(name) {
 
 function tierForWtd(w) {
   if (w === null || w === undefined || isNaN(w)) return "base";
-  if (w < 0.85) return "base";
-  if (w < 0.90) return "p5";
-  if (w < 0.95) return "p10";
-  return "p15";
+  if (w < 0.90) return "base";
+  if (w < 0.95) return "p5";
+  return "p10";
 }
 function tierObj(key) {
   for (var i = 0; i < TIERS.length; i++) if (TIERS[i].key === key) return TIERS[i];
