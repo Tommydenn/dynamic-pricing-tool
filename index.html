@@ -743,7 +743,7 @@ var msToken  = null;
 function loadMsal(cb) {
   if (window.msal && msalApp) { cb(); return; }
   var s = document.createElement("script");
-  s.src = "https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js";
+  s.src = "https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js";
   s.onerror = function() {
     setSpStatus("error", "\u2717 Failed to load Microsoft auth library. Check internet connection.");
   };
