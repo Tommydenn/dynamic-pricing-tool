@@ -730,7 +730,7 @@ var AZURE_CLIENT_ID = "1a1f90e1-a4aa-4cf8-a932-6959c2061578";
 var AZURE_TENANT_ID = "bca42da9-fe48-4d0d-b2d1-99c130cff7c6";
 var SP_SITE_HOSTNAME = "greatlakesmc.sharepoint.com";
 var SP_SITE_PATH = "/sites/CorporateShared";
-var SP_FOLDER_PATH  = "/2026 dynamic pricing files";
+var SP_FOLDER_PATH  = "/General/Senior Living Pricing/2026 Dynamic Pricing Files";
 
 var GMAIL_CLIENT_ID = "690706530352-07f8p4e5lp6d8f9e8k7j2b3c1a5d6g7h.apps.googleusercontent.com";
 // Note: Gmail send uses the MCP Gmail tool via Claude — handled server-side.
@@ -844,6 +844,44 @@ function loadSheetJS(cb) {
     document.head.appendChild(s2);
   };
   document.head.appendChild(s);
+}
+
+function loadHtml2Pdf(cb) {
+  if (window.html2pdf) { cb(); return; }
+  var s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js";
+  s.onload = cb;
+  s.onerror = function() { console.error("html2pdf load failed"); cb(); };
+  document.head.appendChild(s);
+}
+
+async function generatePdf() {
+  await new Promise(function(res) { loadHtml2Pdf(res); });
+  if (!window.html2pdf) return null;
+  var el = document.querySelector(".print-sheet");
+  if (!el) return null;
+  return await html2pdf().set({
+    margin: [0.4, 0.3, 0.4, 0.3],
+    image: { type: "jpeg", quality: 0.95 },
+    html2canvas: { scale: 2, useCORS: true, logging: false },
+    jsPDF: { unit: "in", format: "letter", orientation: "landscape" }
+  }).from(el).outputPdf("blob");
+}
+
+async function uploadPdfToSharePoint(pdfBlob, filename) {
+  var token = await getMsToken();
+  var siteResp = await fetch("https://graph.microsoft.com/v1.0/sites/" + SP_SITE_HOSTNAME + ":" + SP_SITE_PATH,
+    { headers: { Authorization: "Bearer " + token } });
+  if (!siteResp.ok) return;
+  var siteData = await siteResp.json();
+  var driveResp = await fetch("https://graph.microsoft.com/v1.0/sites/" + siteData.id + "/drive",
+    { headers: { Authorization: "Bearer " + token } });
+  if (!driveResp.ok) return;
+  var driveData = await driveResp.json();
+  var url = "https://graph.microsoft.com/v1.0/drives/" + driveData.id
+    + "/root:" + SP_FOLDER_PATH + "/" + filename + ":/content";
+  await fetch(url, { method: "PUT", headers: { Authorization: "Bearer " + token,
+    "Content-Type": "application/pdf" }, body: pdfBlob });
 }
 
 async function buildXlsx() {
@@ -1092,6 +1130,7 @@ async function runPublish() {
   setProgress("Starting publish workflow\u2026");
 
   var spResult = null;
+  var pdfBlob = null;
 
   // Step 1: Build Excel
   setProgress("Step 1 / 3 &mdash; Building Excel file\u2026");
@@ -1110,6 +1149,29 @@ async function runPublish() {
 
   // Step 3: Send email via Claude Gmail integration
   setProgress("Step 3 / 3 &mdash; Sending email notification\u2026");
+  // Generate PDF
+  try {
+    setProgress("Generating PDF\u2026");
+    var ratesP = document.getElementById("page-rates");
+    var printP = document.getElementById("page-print");
+    var printC = document.getElementById("print-content");
+    var wasRates = ratesP && ratesP.classList.contains("active");
+    if (ratesP) ratesP.classList.remove("active");
+    if (printP) printP.classList.add("active");
+    if (printC) printC.style.display = "block";
+    buildPrintSheet();
+    pdfBlob = await generatePdf();
+    if (wasRates) { if (printP) printP.classList.remove("active"); if (ratesP) ratesP.classList.add("active"); }
+    if (pdfBlob && spResult) {
+      var pdfName = spResult.filename.replace(".xlsx", ".pdf");
+      setProgress("Uploading PDF to SharePoint\u2026");
+      try {
+        await uploadPdfToSharePoint(pdfBlob, pdfName);
+        setSpStatus("success", "\u2713 Uploaded: " + spResult.filename + " + PDF");
+      } catch(pe) { console.error("PDF upload:", pe); }
+    }
+  } catch(pdfErr) { console.error("PDF error:", pdfErr); }
+
   setEmailStatus("loading", "Sending via Outlook\u2026");
 
   var emailHtml = buildEmailHtml(spResult);
@@ -1121,7 +1183,7 @@ async function runPublish() {
   try {
     // Try to use window.sendEmail if the parent has wired it up
     if (typeof window.sendEmailViaGmail === "function") {
-      await window.sendEmailViaGmail(emails, subject, emailHtml);
+      await window.sendEmailViaGmail(emails, subject, emailHtml, pdfBlob, currentCommunity);
       setEmailStatus("success", "\u2713 Email sent to " + emails.length + " recipient(s)");
     } else {
       // Fallback: open mailto with summary (HTML body won't render but gives info)
@@ -1240,7 +1302,7 @@ function buildRFC2822(toList, subject, htmlBody) {
 }
 
 // Override the Gmail call in runPublish
-window.sendEmailViaGmail = async function(emails, subject, htmlBody) {
+window.sendEmailViaGmail = async function(emails, subject, htmlBody, pdfBlob, communityName) {
   var token = await getMsToken();
   var toRecipients = emails.map(function(e) {
     return { emailAddress: { address: e.trim() } };
@@ -1253,6 +1315,23 @@ window.sendEmailViaGmail = async function(emails, subject, htmlBody) {
     },
     saveToSentItems: true
   };
+  if (pdfBlob) {
+    var b64 = await new Promise(function(res) {
+      var reader = new FileReader();
+      reader.onload = function() { res(reader.result.split(",")[1]); };
+      reader.readAsDataURL(pdfBlob);
+    });
+    var now = new Date();
+    var pad = function(n){ return n < 10 ? "0" + n : n; };
+    var ts = now.getFullYear() + "-" + pad(now.getMonth()+1) + "-" + pad(now.getDate());
+    var safeName = (communityName || "RateSheet").replace(/[\/\\:*?"<>|]/g, "_");
+    payload.message.attachments = [{
+      "@odata.type": "#microsoft.graph.fileAttachment",
+      name: safeName + "_RateSheet_" + ts + ".pdf",
+      contentType: "application/pdf",
+      contentBytes: b64
+    }];
+  }
   var resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
     method: "POST",
     headers: {
