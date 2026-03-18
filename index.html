@@ -792,7 +792,7 @@ async function getMsToken() {
   if (msToken) return msToken;
   return new Promise(function(resolve, reject) {
     loadMsal(async function() {
-      var scopes = ["Files.ReadWrite", "Sites.ReadWrite.All", "User.Read"];
+      var scopes = ["Files.ReadWrite", "Sites.ReadWrite.All", "User.Read", "Mail.Send"];
       var accounts = msalApp.getAllAccounts();
       console.log("[MSAL] Accounts found:", accounts.length);
 
@@ -1050,7 +1050,7 @@ async function runPublish() {
 
   // Step 3: Send email via Claude Gmail integration
   setProgress("Step 3 / 3 &mdash; Sending email notification\u2026");
-  setEmailStatus("loading", "Sending via Gmail\u2026");
+  setEmailStatus("loading", "Sending via Outlook\u2026");
 
   var emailHtml = buildEmailHtml(spResult);
   var subject = "Rate Sheet Published: " + currentCommunity + " \u2014 " + new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
@@ -1181,7 +1181,30 @@ function buildRFC2822(toList, subject, htmlBody) {
 
 // Override the Gmail call in runPublish
 window.sendEmailViaGmail = async function(emails, subject, htmlBody) {
-  await sendViaGmailApi(emails, subject, htmlBody);
+  var token = await getMsToken();
+  var toRecipients = emails.map(function(e) {
+    return { emailAddress: { address: e.trim() } };
+  });
+  var payload = {
+    message: {
+      subject: subject,
+      body: { contentType: "HTML", content: htmlBody },
+      toRecipients: toRecipients
+    },
+    saveToSentItems: true
+  };
+  var resp = await fetch("https://graph.microsoft.com/v1.0/me/sendMail", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  if (!resp.ok && resp.status !== 202) {
+    var err = await resp.json().catch(function() { return {}; });
+    throw new Error(err.error && err.error.message ? err.error.message : "Outlook send failed (" + resp.status + ")");
+  }
 };
 
 </script>
