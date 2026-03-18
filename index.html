@@ -917,20 +917,63 @@ async function generatePdf() {
   });
   return doc.output("blob");
 }
-async function uploadPdfToSharePoint(pdfBlob, filename) {
-  var token = await getMsToken();
+// ── SharePoint folder helpers ──
+async function getSpDrive(token) {
   var siteResp = await fetch("https://graph.microsoft.com/v1.0/sites/" + SP_SITE_HOSTNAME + ":" + SP_SITE_PATH,
     { headers: { Authorization: "Bearer " + token } });
-  if (!siteResp.ok) return;
+  if (!siteResp.ok) throw new Error("SharePoint site not found");
   var siteData = await siteResp.json();
   var driveResp = await fetch("https://graph.microsoft.com/v1.0/sites/" + siteData.id + "/drive",
     { headers: { Authorization: "Bearer " + token } });
-  if (!driveResp.ok) return;
-  var driveData = await driveResp.json();
-  var url = "https://graph.microsoft.com/v1.0/drives/" + driveData.id
-    + "/root:" + SP_FOLDER_PATH + "/" + filename + ":/content";
-  await fetch(url, { method: "PUT", headers: { Authorization: "Bearer " + token,
-    "Content-Type": "application/pdf" }, body: pdfBlob });
+  if (!driveResp.ok) throw new Error("SharePoint drive not found");
+  return (await driveResp.json()).id;
+}
+
+async function ensureFolder(token, driveId, folderPath) {
+  var parts = folderPath.replace(/^\//, "").split("/");
+  var currentPath = "";
+  for (var i = 0; i < parts.length; i++) {
+    var parentPath = currentPath ? "/root:/" + currentPath + ":" : "/root";
+    var url = "https://graph.microsoft.com/v1.0/drives/" + driveId + parentPath + "/children";
+    await fetch(url, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: parts[i], folder: {}, "@microsoft.graph.conflictBehavior": "replace" })
+    });
+    currentPath = currentPath ? currentPath + "/" + parts[i] : parts[i];
+  }
+}
+
+async function moveCurrentToHistorical(token, driveId, community) {
+  var safeName = community.replace(/[\/\\:*?"<>|]/g, "_");
+  var currentFolder = SP_FOLDER_PATH + "/Current Rates/" + safeName;
+  var historicalFolder = SP_FOLDER_PATH + "/Historical Rates/" + safeName;
+  await ensureFolder(token, driveId, currentFolder.replace(/^\//, ""));
+  await ensureFolder(token, driveId, historicalFolder.replace(/^\//, ""));
+  var listUrl = "https://graph.microsoft.com/v1.0/drives/" + driveId + "/root:" + currentFolder + ":/children";
+  var listResp = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
+  if (!listResp.ok) return;
+  var listData = await listResp.json();
+  var files = (listData.value || []).filter(function(item) { return item.file; });
+  if (files.length === 0) return;
+  var histFolderResp = await fetch("https://graph.microsoft.com/v1.0/drives/" + driveId + "/root:" + historicalFolder,
+    { headers: { Authorization: "Bearer " + token } });
+  if (!histFolderResp.ok) return;
+  var histFolderData = await histFolderResp.json();
+  for (var i = 0; i < files.length; i++) {
+    await fetch("https://graph.microsoft.com/v1.0/drives/" + driveId + "/items/" + files[i].id, {
+      method: "PATCH",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ parentReference: { id: histFolderData.id } })
+    });
+  }
+}
+
+async function uploadFileToSP(token, driveId, folderPath, filename, blob, contentType) {
+  var url = "https://graph.microsoft.com/v1.0/drives/" + driveId + "/root:" + folderPath + "/" + filename + ":/content";
+  var resp = await fetch(url, { method: "PUT", headers: { Authorization: "Bearer " + token, "Content-Type": contentType }, body: blob });
+  if (!resp.ok) { var e = await resp.text(); throw new Error("Upload failed (" + resp.status + "): " + e.substring(0, 200)); }
+  return await resp.json();
 }
 
 async function buildXlsx() {
@@ -1015,58 +1058,31 @@ async function buildXlsx() {
   return XLSX.write(wb2,{bookType:"xlsx",type:"array"});
 }
 
-// ── Upload to SharePoint via Graph API ────────────────────────────────────────
+// ── Upload to SharePoint (Current/Historical) ──
 async function uploadToSharePoint(xlsxData) {
   setSpStatus("loading", "Signing in to Microsoft\u2026");
   var token = await getMsToken();
   setSpStatus("loading", "Locating SharePoint drive\u2026");
+  var driveId = await getSpDrive(token);
+  var safeName = currentCommunity.replace(/[\/\\:*?"<>|]/g, "_");
+  var currentFolder = SP_FOLDER_PATH + "/Current Rates/" + safeName;
 
-  // Get the drive for the site
-  var siteResp = await fetch(
-    "https://graph.microsoft.com/v1.0/sites/" + SP_SITE_HOSTNAME + ":" + SP_SITE_PATH,
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (!siteResp.ok) throw new Error("Could not find SharePoint site (HTTP " + siteResp.status + ")");
-  var siteData = await siteResp.json();
-  var siteId = siteData.id;
+  setSpStatus("loading", "Archiving previous rates\u2026");
+  try { await moveCurrentToHistorical(token, driveId, currentCommunity); } catch(e) { console.log("[SP] Archive:", e.message); }
 
-  var driveResp = await fetch(
-    "https://graph.microsoft.com/v1.0/sites/" + siteId + "/drive",
-    { headers: { Authorization: "Bearer " + token } }
-  );
-  if (!driveResp.ok) throw new Error("Could not access SharePoint drive (HTTP " + driveResp.status + ")");
-  var driveData = await driveResp.json();
-  var driveId = driveData.id;
-
-  // Build timestamped filename
   var now = new Date();
-  var pad = function(n){return n<10?"0"+n:n;};
-  var ts = now.getFullYear()+"-"+pad(now.getMonth()+1)+"-"+pad(now.getDate())
-         +"_"+pad(now.getHours())+pad(now.getMinutes());
-  var safeName = currentCommunity.replace(/[\/\\:*?"<>|]/g,"_");
+  var pad = function(n){ return n < 10 ? "0" + n : n; };
+  var ts = now.getFullYear() + "-" + pad(now.getMonth()+1) + "-" + pad(now.getDate()) + "_" + pad(now.getHours()) + pad(now.getMinutes());
   var filename = safeName + "_RateSheet_" + ts + ".xlsx";
 
+  await ensureFolder(token, driveId, currentFolder.replace(/^\//, ""));
   setSpStatus("loading", "Uploading " + filename + "\u2026");
 
-  // Upload via simple PUT (files < 4MB)
-  var uploadUrl = "https://graph.microsoft.com/v1.0/drives/" + driveId
-    + "/root:" + SP_FOLDER_PATH + "/" + filename + ":/content";
-  var blob = new Blob([xlsxData], {type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-  var uploadResp = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      Authorization: "Bearer " + token,
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    },
-    body: blob
-  });
-  if (!uploadResp.ok) {
-    var errText = await uploadResp.text();
-    throw new Error("Upload failed (HTTP " + uploadResp.status + "): " + errText.substring(0,200));
-  }
-  var uploadData = await uploadResp.json();
+  var blob = new Blob([xlsxData], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  var uploadData = await uploadFileToSP(token, driveId, currentFolder, filename, blob, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
   setSpStatus("success", "\u2713 Uploaded: " + filename);
-  return { filename: filename, webUrl: uploadData.webUrl || "" };
+  return { filename: filename, webUrl: uploadData.webUrl || "", driveId: driveId, token: token, currentFolder: currentFolder };
 }
 
 // ── Build email HTML ──────────────────────────────────────────────────────────
@@ -1206,7 +1222,7 @@ async function runPublish() {
       var pdfName = spResult.filename.replace(".xlsx", ".pdf");
       setProgress("Uploading PDF to SharePoint\u2026");
       try {
-        await uploadPdfToSharePoint(pdfBlob, pdfName);
+        await uploadFileToSP(spResult.token, spResult.driveId, spResult.currentFolder, pdfName, pdfBlob, "application/pdf");
         setSpStatus("success", "\u2713 Uploaded: " + spResult.filename + " + PDF");
       } catch(pe) { console.error("PDF upload:", pe); }
     }
