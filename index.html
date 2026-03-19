@@ -359,13 +359,13 @@ function loadCommunity(name) {
     loaded.push({
       unit:r.unit, care:r.care||"IL", type:r.type, floorplan:r.floorplan, sqft:r.sqft, wtdAvg:r.wtd,
       ilBase:b,
-      il5:  b!==null ? Math.round(b * 1.05) : null,
-      il10: b!==null ? Math.round(b * 1.10) : null,
-      il15: b!==null ? Math.round(b * 1.15) : null,
-      alBase: b!==null ? Math.round(b + af) : null,
-      al5:   b!==null ? Math.round(b * 1.05 + af) : null,
-      al10:  b!==null ? Math.round(b * 1.10 + af) : null,
-      al15:  b!==null ? Math.round(b * 1.15 + af) : null,
+      il5:  b!==null ? Math.round(b * 1.05 / 5) * 5 : null,
+      il10: b!==null ? Math.round(b * 1.10 / 5) * 5 : null,
+      il15: b!==null ? Math.round(b * 1.15 / 5) * 5 : null,
+      alBase: b!==null ? Math.round((b + af) / 5) * 5 : null,
+      al5:   b!==null ? Math.round((b * 1.05 + af) / 5) * 5 : null,
+      al10:  b!==null ? Math.round((b * 1.10 + af) / 5) * 5 : null,
+      al15:  b!==null ? Math.round((b * 1.15 + af) / 5) * 5 : null,
       mcBase:null, mc5:null, mc10:null, mc15:null,
       csBase:null, cs5:null, cs10:null, cs15:null
     });
@@ -379,9 +379,9 @@ function loadCommunity(name) {
       ilBase:null, il5:null, il10:null, il15:null,
       alBase:null, al5:null, al10:null, al15:null,
       mcBase: total,
-      mc5:   total!==null ? Math.round(total * 1.05) : null,
-      mc10:  total!==null ? Math.round(total * 1.10) : null,
-      mc15:  total!==null ? Math.round(total * 1.15) : null,
+      mc5:   total!==null ? Math.round(total * 1.05 / 5) * 5 : null,
+      mc10:  total!==null ? Math.round(total * 1.10 / 5) * 5 : null,
+      mc15:  total!==null ? Math.round(total * 1.15 / 5) * 5 : null,
       csBase:null, cs5:null, cs10:null, cs15:null
     });
   });
@@ -395,9 +395,9 @@ function loadCommunity(name) {
       alBase:null, al5:null, al10:null, al15:null,
       mcBase:null, mc5:null, mc10:null, mc15:null,
       csBase: total,
-      cs5:   total!==null ? Math.round(total * 1.05) : null,
-      cs10:  total!==null ? Math.round(total * 1.10) : null,
-      cs15:  total!==null ? Math.round(total * 1.15) : null
+      cs5:   total!==null ? Math.round(total * 1.05 / 5) * 5 : null,
+      cs10:  total!==null ? Math.round(total * 1.10 / 5) * 5 : null,
+      cs15:  total!==null ? Math.round(total * 1.15 / 5) * 5 : null
     });
   });
 
