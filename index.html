@@ -231,7 +231,20 @@ tbody td{padding:9px 12px;vertical-align:middle}
         <div class="publish-grid">
           <div class="publish-section">
             <div class="publish-section-label label-email"><span>@</span> Email recipients</div>
-            <textarea class="publish-input" id="pub-emails" rows="3" placeholder="email@example.com, another@example.com&#10;(comma-separated)"></textarea>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <div>
+                <label style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;display:block">Sales Director</label>
+                <input class="publish-input" id="pub-email-sd" type="email" placeholder="email@example.com">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;display:block">Executive Director</label>
+                <input class="publish-input" id="pub-email-ed" type="email" placeholder="email@example.com">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;display:block">Business Office Manager</label>
+                <input class="publish-input" id="pub-email-bom" type="email" placeholder="email@example.com">
+              </div>
+            </div>
             <div class="publish-status status-idle" id="email-status">Ready to send</div>
           </div>
           <div class="publish-section">
@@ -1233,16 +1246,21 @@ function resetPublish() {
   setProgress("");
   document.getElementById("pub-btn").disabled = false;
   document.getElementById("pub-btn").innerHTML = "&#128228; Publish &amp; Notify";
+  document.getElementById("pub-email-sd").value = "";
+  document.getElementById("pub-email-ed").value = "";
+  document.getElementById("pub-email-bom").value = "";
 }
 
 // ── Main publish flow ─────────────────────────────────────────────────────────
 async function runPublish() {
   if (!units.length) { alert("No community loaded. Please select a community first."); return; }
 
-  var emailsRaw = document.getElementById("pub-emails").value.trim();
-  if (!emailsRaw) { alert("Please enter at least one recipient email address."); return; }
-  var emails = emailsRaw.split(/[,\n]+/).map(function(e){return e.trim();}).filter(Boolean);
-  if (!emails.length) { alert("No valid email addresses found."); return; }
+  var emails = [
+    document.getElementById("pub-email-sd").value.trim(),
+    document.getElementById("pub-email-ed").value.trim(),
+    document.getElementById("pub-email-bom").value.trim()
+  ].filter(Boolean);
+  if (!emails.length) { alert("Please enter at least one recipient email address."); return; }
 
   var btn = document.getElementById("pub-btn");
   btn.disabled = true;
