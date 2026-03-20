@@ -554,7 +554,9 @@ function sumNN(arr) {
 
 function renderTable() {
   if (!units.length) return;
-  var filtered = getFiltered();
+  var filtered = getFiltered().slice().sort(function(a, b) {
+    return a.unit.localeCompare(b.unit, undefined, {numeric:true});
+  });
   document.getElementById("unit-count").textContent = filtered.length + " / " + units.length + " units";
 
   var html = "";
@@ -658,8 +660,7 @@ function buildPrintSheet() {
   document.getElementById("sheet-fees-display").textContent = fl.join(" \u00b7");
 
   var sorted = units.slice().sort(function(a, b) {
-    var co = ({IL:0,MC:1,CS:2}[a.care]||0) - ({IL:0,MC:1,CS:2}[b.care]||0);
-    return co !== 0 ? co : a.unit.localeCompare(b.unit, undefined, {numeric:true});
+    return a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
 
   var ov = sorted.filter(function(u) {
@@ -931,8 +932,7 @@ async function generatePdf() {
 
   // ── Table data ──
   var sorted = units.slice().sort(function(a, b) {
-    var co = ({ IL: 0, MC: 1, CS: 2 }[a.care] || 0) - ({ IL: 0, MC: 1, CS: 2 }[b.care] || 0);
-    return co !== 0 ? co : a.unit.localeCompare(b.unit, undefined, { numeric: true });
+    return a.unit.localeCompare(b.unit, undefined, { numeric: true });
   });
 
   var head = [["UNIT", "CARE", "TYPE", "FLOORPLAN", "SQ FT", "WTD%", "BASE RATE", "TIER", "IL RATE", "AL RATE", "MC RATE", "CS RATE"]];
@@ -1088,8 +1088,7 @@ async function uploadFileToSP(token, driveId, folderPath, filename, blob, conten
 
 function buildXlsx() {
   var sorted = units.slice().sort(function(a,b){
-    var co = ({IL:0,MC:1,CS:2}[a.care]||0) - ({IL:0,MC:1,CS:2}[b.care]||0);
-    return co !== 0 ? co : a.unit.localeCompare(b.unit, undefined, {numeric:true});
+    return a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
   var fees = getFees(currentCommunity);
   var rows = [["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]];
@@ -1156,8 +1155,7 @@ async function uploadToSharePoint(xlsxData) {
 // ── Build email HTML ──────────────────────────────────────────────────────────
 function buildEmailHtml(spResult) {
   var sorted = units.slice().sort(function(a,b){
-    var co = ({IL:0,MC:1,CS:2}[a.care]||0) - ({IL:0,MC:1,CS:2}[b.care]||0);
-    return co !== 0 ? co : a.unit.localeCompare(b.unit, undefined, {numeric:true});
+    return a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
   var now = new Date();
   var dateStr = now.toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"});
