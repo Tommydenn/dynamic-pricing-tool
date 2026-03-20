@@ -851,12 +851,19 @@ async function getMsToken() {
   });
 }
 
-// ── Build Excel (XLSX) via SheetJS ────────────────────────────────────────────
+// ── Build Excel (XLSX) via xlsx-js-style (supports cell styling) ──────────────
 function loadSheetJS(cb) {
   if (window.XLSX) { cb(); return; }
   var s = document.createElement("script");
-  s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+  s.src = "https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js";
   s.onload = cb;
+  s.onerror = function() {
+    // Fallback to plain SheetJS if styled version fails
+    var s2 = document.createElement("script");
+    s2.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s2.onload = cb;
+    document.head.appendChild(s2);
+  };
   document.head.appendChild(s);
 }
 
@@ -1091,25 +1098,132 @@ function buildXlsx() {
     return a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
   var fees = getFees(currentCommunity);
-  var rows = [["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]];
+  var now = new Date();
+  var dateStr = now.toLocaleDateString("en-US", {month:"long", day:"numeric", year:"numeric"});
+
+  // ── Styles ──
+  var darkBg = "003C4C";
+  var accentBg = "007098";
+  var lightBg = "F5F7F8";
+  var borderClr = "D0D8DC";
+  var white = "FFFFFF";
+  var thinBorder = {style:"thin", color:{rgb:borderClr}};
+  var allBorders = {top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder};
+
+  var titleStyle = {font:{name:"Calibri",sz:16,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
+  var subtitleStyle = {font:{name:"Calibri",sz:10,color:{rgb:"B0C4CC"}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
+  var headerStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var headerLeftStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"left",vertical:"center",wrapText:true}, border:allBorders};
+  var cellStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{vertical:"center"}};
+  var cellCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  var cellMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
+  var cellPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
+  var altStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{vertical:"center"}};
+  var altCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  var altMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
+  var altPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
+  var totalLabelStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"left",vertical:"center"}};
+  var totalMoneyStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
+  var totalCenterStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  var feeStyle = {font:{name:"Calibri",sz:9,italic:true,color:{rgb:"4A6670"}}, alignment:{horizontal:"left",vertical:"center"}};
+
+  // ── Build rows ──
+  var aoa = [];
+  // Row 0: Title
+  aoa.push([currentCommunity,"","","","","","","","","","","",""]);
+  // Row 1: Subtitle with date + fees
+  var feeText = "Generated " + dateStr;
+  if (fees.al) feeText += "  |  AL Fee: $" + fees.al.toLocaleString();
+  if (fees.mc) feeText += "  |  MC Fee: $" + fees.mc.toLocaleString();
+  if (fees.cs) feeText += "  |  CS Fee: $" + fees.cs.toLocaleString();
+  aoa.push([feeText,"","","","","","","","","","","",""]);
+  // Row 2: blank spacer
+  aoa.push([]);
+  // Row 3: Header
+  aoa.push(["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]);
+
+  // Data rows start at row 4
   sorted.forEach(function(u) {
     var s = selections[sk(u.unit,u.care)] || {};
     var tk = s.tier || tierForWtd(u.wtdAvg);
     var t  = tierObj(tk);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var ilV = u[t.ilF], alV = u[t.alF], mcV = u[t.mcF], csV = u[t.csF];
-    rows.push([
+    aoa.push([
       currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
       u.sqft ? Math.round(u.sqft) : "",
-      u.wtdAvg !== null ? Math.round(u.wtdAvg*100)/100 : "",
-      pBase || "", t.label,
-      ilV||"", alV||"", mcV||"", csV||""
+      u.wtdAvg !== null ? u.wtdAvg : "",
+      pBase !== null ? pBase : "", t.label,
+      ilV !== null ? ilV : "", alV !== null ? alV : "",
+      mcV !== null ? mcV : "", csV !== null ? csV : ""
     ]);
   });
+
+  // Totals row
+  var totBase=0, totIL=0, totAL=0, totMC=0, totCS=0;
+  var hBase=false, hIL=false, hAL=false, hMC=false, hCS=false;
+  sorted.forEach(function(u){
+    var s = selections[sk(u.unit,u.care)] || {};
+    var tk = s.tier || tierForWtd(u.wtdAvg);
+    var t = tierObj(tk);
+    var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    if(pBase!==null){hBase=true;totBase+=pBase;}
+    if(u[t.ilF]!==null){hIL=true;totIL+=u[t.ilF];}
+    if(u[t.alF]!==null){hAL=true;totAL+=u[t.alF];}
+    if(u[t.mcF]!==null){hMC=true;totMC+=u[t.mcF];}
+    if(u[t.csF]!==null){hCS=true;totCS+=u[t.csF];}
+  });
+  aoa.push(["Totals ("+sorted.length+" units)","","","","","","",
+    hBase?totBase:"", "",
+    hIL?totIL:"", hAL?totAL:"", hMC?totMC:"", hCS?totCS:""
+  ]);
+
   var wb = XLSX.utils.book_new();
-  var ws = XLSX.utils.aoa_to_sheet(rows);
-  // Column widths
-  ws["!cols"] = [20,10,6,14,20,8,10,12,8,12,12,12,12].map(function(w){return{wch:w};});
+  var ws = XLSX.utils.aoa_to_sheet(aoa);
+
+  // ── Merge title and subtitle across columns ──
+  ws["!merges"] = [
+    {s:{r:0,c:0},e:{r:0,c:12}},
+    {s:{r:1,c:0},e:{r:1,c:12}}
+  ];
+
+  // ── Column widths ──
+  ws["!cols"] = [{wch:22},{wch:10},{wch:7},{wch:14},{wch:18},{wch:8},{wch:10},{wch:12},{wch:10},{wch:12},{wch:12},{wch:12},{wch:12}];
+  // ── Row heights ──
+  ws["!rows"] = [{hpt:30},{hpt:18},{hpt:8},{hpt:22}];
+
+  // ── Apply styles ──
+  // Title row
+  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:0,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=titleStyle;}
+  // Subtitle row
+  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:1,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=subtitleStyle;}
+  // Header row (row 3)
+  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:3,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=(c<=1||c===3||c===4)?headerLeftStyle:headerStyle;}
+
+  // Data rows
+  var dataStart = 4;
+  var dataEnd = dataStart + sorted.length;
+  for(var r=dataStart;r<dataEnd;r++){
+    var isAlt = (r-dataStart)%2===1;
+    for(var c=0;c<=12;c++){
+      var cr = XLSX.utils.encode_cell({r:r,c:c});
+      if(!ws[cr]) ws[cr]={v:"",t:"s"};
+      if(c===6){ ws[cr].s = isAlt?altPct:cellPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
+      else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = isAlt?altMoney:cellMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
+      else if(c===2||c===5||c===8){ ws[cr].s = isAlt?altCenter:cellCenter; }
+      else { ws[cr].s = isAlt?altStyle:cellStyle; }
+    }
+  }
+
+  // Totals row
+  var tr = dataEnd;
+  for(var c=0;c<=12;c++){
+    var cr = XLSX.utils.encode_cell({r:tr,c:c});
+    if(!ws[cr]) ws[cr]={v:"",t:"s"};
+    if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s=totalMoneyStyle; if(ws[cr].v!==""){ws[cr].t="n";} }
+    else { ws[cr].s = c===0?totalLabelStyle:totalCenterStyle; }
+  }
+
   XLSX.utils.book_append_sheet(wb, ws, currentCommunity.substring(0,31));
   return XLSX.write(wb, {bookType:"xlsx", type:"array"});
 }
