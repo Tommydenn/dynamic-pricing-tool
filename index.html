@@ -66,7 +66,13 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .c-il{background:var(--il-bg);color:var(--il-color)}.c-mc{background:var(--mc-bg);color:var(--mc-color)}.c-cs{background:var(--cs-bg);color:var(--cs-color)}
 .wtd-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-family:'DM Mono',monospace;font-size:11px;font-weight:500;white-space:nowrap}
 .w-base{background:#FBF0F5;color:#7a2555}.w-a{background:#FDF3EC;color:#8B4513}.w-b{background:#E8F4F8;color:#1a5d75}.w-c{background:#EAF2EC;color:#2D5A3D}
-.tier-select{width:100%;min-width:110px;padding:6px 8px 6px 10px;font-size:13px;font-family:'Source Serif Pro',sans-serif;border:1px solid var(--border);border-left-width:3px;border-radius:var(--radius);background:var(--surface);color:var(--text);cursor:pointer;font-weight:500}
+.tier-wrap{position:relative;display:inline-flex;flex-direction:column;align-items:center;gap:4px}
+.tier-select{-webkit-appearance:none;appearance:none;min-width:100px;padding:5px 26px 5px 10px;font-size:11px;font-family:'DM Mono',monospace;font-weight:600;letter-spacing:.02em;border:1.5px solid var(--border-light);border-radius:20px;background:var(--surface);color:var(--text);cursor:pointer;transition:all .15s;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238A9DA6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;background-size:8px 5px}
+.tier-select:hover{border-color:var(--accent);background-color:var(--surface2)}
+.tier-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,112,152,.12)}
+.custom-rate-input{width:88px;padding:4px 8px;font-size:11px;font-family:'DM Mono',monospace;font-weight:500;border:1.5px solid #9B5DE5;border-radius:20px;text-align:right;background:var(--surface);color:var(--text);transition:all .15s}
+.custom-rate-input:focus{outline:none;box-shadow:0 0 0 2px rgba(155,93,229,.15)}
+.custom-rate-input::placeholder{color:var(--text-tertiary);font-weight:400}
 .pc{font-family:'DM Mono',monospace;font-size:13px;font-weight:600;white-space:nowrap}
 .pc.il{color:var(--il-color)}.pc.al{color:var(--al-color)}.pc.mc{color:var(--mc-color)}.pc.cs{color:var(--cs-color)}.pc.nil{color:var(--text-tertiary);font-weight:400}
 .print-actions{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem;gap:1rem}
@@ -339,7 +345,8 @@ var TIERS = [
   {key:"base",label:"Base",ilF:"ilBase",alF:"alBase",mcF:"mcBase",csF:"csBase",color:"#c07090"},
   {key:"p5",  label:"+5%", ilF:"il5",  alF:"al5",  mcF:"mc5",  csF:"cs5",  color:"#c07830"},
   {key:"p10", label:"+10%",ilF:"il10", alF:"al10", mcF:"mc10", csF:"cs10", color:"#1a6a9a"},
-  {key:"p15", label:"+15%",ilF:"il15", alF:"al15", mcF:"mc15", csF:"cs15", color:"#2D5A3D"}
+  {key:"p15", label:"+15%",ilF:"il15", alF:"al15", mcF:"mc15", csF:"cs15", color:"#2D5A3D"},
+  {key:"custom",label:"Custom",ilF:null,alF:null,mcF:null,csF:null,color:"#9B5DE5"}
 ];
 
 var units = [], selections = {}, currentCommunity = "",
@@ -431,6 +438,46 @@ function sk(unit, care) { return unit + "|" + care; }
 function fmt(n) {
   if (n === null || n === undefined || isNaN(n)) return "\u2014";
   return "$" + Math.round(n).toLocaleString();
+}
+
+// Get effective rates for a unit, respecting custom overrides
+function getEffectiveRates(u, sel) {
+  var s = sel || selections[sk(u.unit, u.care)] || {};
+  var tk = s.tier || tierForWtd(u.wtdAvg);
+  if (tk === "custom" && s.customRate != null) {
+    var cr = Number(s.customRate);
+    // For custom: IL rate = custom, AL = custom + AL fee, MC = custom + MC fee, CS = custom + CS fee
+    var fees = getFees(currentCommunity);
+    var ilR = null, alR = null, mcR = null, csR = null;
+    if (u.care === "IL" || u.care === "AL" || u.care === "Flex") {
+      ilR = cr;
+      alR = (fees.al !== null) ? cr + fees.al : null;
+    } else if (u.care === "MC") {
+      mcR = cr;
+    } else if (u.care === "CS") {
+      csR = cr;
+    }
+    return {il: ilR, al: alR, mc: mcR, cs: csR, tier: tk, tierObj: tierObj("custom")};
+  }
+  var t = tierObj(tk);
+  return {il: u[t.ilF], al: u[t.alF], mc: u[t.mcF], cs: u[t.csF], tier: tk, tierObj: t};
+}
+
+function setCustomRate(unit, care, val) {
+  var s = sk(unit, care);
+  var numVal = parseFloat(val);
+  if (isNaN(numVal) || val.trim() === "") {
+    // If cleared, revert to default tier
+    var u = null;
+    for (var i = 0; i < units.length; i++) {
+      if (units[i].unit === unit && units[i].care === care) { u = units[i]; break; }
+    }
+    selections[s] = {tier: tierForWtd(u ? u.wtdAvg : null), isDefault: true};
+  } else {
+    selections[s] = {tier: "custom", isDefault: false, customRate: Math.round(numVal / 5) * 5};
+  }
+  updateSidebar();
+  renderTable();
 }
 function wtdBadge(w) {
   if (w === null || w === undefined || isNaN(w))
@@ -565,21 +612,32 @@ function renderTable() {
     var ck  = s.tier || tierForWtd(u.wtdAvg);
     var t   = tierObj(ck);
     var rc  = u.care === "MC" ? "mc-row" : u.care === "CS" ? "cs-row" : "";
+    var eff = getEffectiveRates(u, s);
 
     var opts = "";
     TIERS.forEach(function(tier) {
       var isDef = (tier.key === tierForWtd(u.wtdAvg));
       opts += "<option value=\"" + tier.key + "\""
             + (ck === tier.key ? " selected" : "")
-            + ">" + tier.label + (isDef ? " \u2605" : "") + "</option>";
+            + ">" + tier.label + (isDef && tier.key !== "custom" ? " \u2605" : "") + "</option>";
     });
 
     var baseVal = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var bc  = bcc(u.care);
-    var ilV = u[t.ilF], alV = u[t.alF], mcV = u[t.mcF], csV = u[t.csF];
+    var ilV = eff.il, alV = eff.al, mcV = eff.mc, csV = eff.cs;
 
     // Escape unit id for use in onclick attribute
     var uid = u.unit.replace(/&/g,"&amp;").replace(/"/g,"&quot;");
+
+    // Custom rate input (shown when Custom tier is selected)
+    var customHtml = "";
+    if (ck === "custom") {
+      var curVal = (s.customRate != null) ? s.customRate : "";
+      customHtml = "<input type=\"number\" class=\"custom-rate-input\" placeholder=\"Enter rate\" value=\"" + curVal + "\""
+                 + " data-unit=\"" + uid + "\" data-care=\"" + u.care + "\""
+                 + " onchange=\"setCustomRate(this.getAttribute('data-unit'),this.getAttribute('data-care'),this.value)\""
+                 + " onkeydown=\"if(event.key==='Enter'){this.blur()}\">";
+    }
 
     html += "<tr class=\"" + rc + "\">"
           + "<td class=\"unit-num\">" + u.unit + "</td>"
@@ -589,11 +647,11 @@ function renderTable() {
           + "<td><span class=\"sqft-val\">" + (u.sqft ? Math.round(u.sqft).toLocaleString() : "\u2014") + "</span></td>"
           + "<td>" + wtdBadge(u.wtdAvg) + "</td>"
           + "<td class=\"pc " + bc + (baseVal === null ? " nil" : "") + "\">" + fmt(baseVal) + "</td>"
-          + "<td style=\"text-align:center\"><select class=\"tier-select\""
-          +   " style=\"border-left:3px solid " + t.color + "\""
+          + "<td style=\"text-align:center\"><div class=\"tier-wrap\"><select class=\"tier-select\""
+          +   " style=\"border-color:" + t.color + "44;color:" + t.color + "\""
           +   " data-unit=\"" + uid + "\" data-care=\"" + u.care + "\""
           +   " onchange=\"setTierFromSelect(this)\">"
-          + opts + "</select></td>"
+          + opts + "</select>" + customHtml + "</div></td>"
           + "<td class=\"pc il"  + (ilV === null ? " nil" : "") + "\">" + fmt(ilV) + "</td>"
           + "<td class=\"pc al"  + (alV === null ? " nil" : "") + "\">" + fmt(alV) + "</td>"
           + "<td class=\"pc mc"  + (mcV === null ? " nil" : "") + "\">" + fmt(mcV) + "</td>"
@@ -603,10 +661,10 @@ function renderTable() {
 
   // Totals row
   var bTot  = sumNN(filtered.map(function(u){ return (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null; }));
-  var ilTot = sumNN(filtered.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.ilF]; }));
-  var alTot = sumNN(filtered.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.alF]; }));
-  var mcTot = sumNN(filtered.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.mcF]; }));
-  var csTot = sumNN(filtered.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.csF]; }));
+  var ilTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.il; }));
+  var alTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.al; }));
+  var mcTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.mc; }));
+  var csTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.cs; }));
 
   html += "<tr style=\"background:var(--surface2);font-weight:600;border-top:2px solid var(--border)\">"
         + "<td colspan=\"6\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
@@ -631,7 +689,13 @@ function setTierFromSelect(sel) {
   for (var i = 0; i < units.length; i++) {
     if (units[i].unit === unit && units[i].care === care) { u = units[i]; break; }
   }
-  selections[s] = {tier: tierKey, isDefault: (tierKey === tierForWtd(u ? u.wtdAvg : null))};
+  if (tierKey === "custom") {
+    // Keep existing custom rate if switching back, otherwise prompt via input
+    var existing = selections[s];
+    selections[s] = {tier: "custom", isDefault: false, customRate: (existing && existing.customRate) || null};
+  } else {
+    selections[s] = {tier: tierKey, isDefault: (tierKey === tierForWtd(u ? u.wtdAvg : null))};
+  }
   updateSidebar();
   renderTable();
 }
@@ -674,6 +738,7 @@ function buildPrintSheet() {
     var s   = selections[sk(u.unit, u.care)] || {};
     var tk  = s.tier || tierForWtd(u.wtdAvg);
     var t   = tierObj(tk);
+    var eff = getEffectiveRates(u, s);
     var isOv = (s.isDefault === false);
     var pct  = (u.wtdAvg !== null && !isNaN(u.wtdAvg)) ? Math.round(u.wtdAvg*100)+"%" : "\u2014";
     var bsty = "background:" + t.color + "22;color:" + t.color
@@ -681,7 +746,8 @@ function buildPrintSheet() {
     var rc = u.care === "MC" ? "mpr" : u.care === "CS" ? "cpr" : "";
     var pb  = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var bc2 = bcc(u.care);
-    var ilV = u[t.ilF], alV = u[t.alF], mcV = u[t.mcF], csV = u[t.csF];
+    var ilV = eff.il, alV = eff.al, mcV = eff.mc, csV = eff.cs;
+    var tierLabel = tk === "custom" ? (s.customRate != null ? "Custom $" + s.customRate.toLocaleString() : "Custom") : t.label;
     var careColor = u.care==="CS" ? "#7A4A00" : u.care==="MC" ? "#6B3A8A" : "#185FA5";
     var careBg    = u.care==="CS" ? "#FDF4E3" : u.care==="MC" ? "#F3EDF9" : "#E6F1FB";
 
@@ -693,7 +759,7 @@ function buildPrintSheet() {
           + "<td class=\"mono\">" + (u.sqft ? Math.round(u.sqft).toLocaleString() : "\u2014") + "</td>"
           + "<td class=\"mono\">" + pct + "</td>"
           + "<td class=\"" + (pb !== null ? bc2+"p" : "mono") + "\" style=\"font-weight:600\">" + fmt(pb) + "</td>"
-          + "<td><span style=\"" + bsty + "\">" + t.label + (isOv ? " \u2605" : "") + "</span></td>"
+          + "<td><span style=\"" + bsty + "\">" + tierLabel + (isOv ? " \u2605" : "") + "</span></td>"
           + "<td class=\"" + (ilV !== null ? "ip" : "mono") + "\">" + fmt(ilV) + "</td>"
           + "<td class=\"" + (alV !== null ? "ap" : "mono") + "\">" + fmt(alV) + "</td>"
           + "<td class=\"" + (mcV !== null ? "mp" : "mono") + "\">" + fmt(mcV) + "</td>"
@@ -702,10 +768,10 @@ function buildPrintSheet() {
   });
 
   var pB = sumNN(sorted.map(function(u){ return (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null; }));
-  var pI = sumNN(sorted.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.ilF]; }));
-  var pA = sumNN(sorted.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.alF]; }));
-  var pM = sumNN(sorted.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.mcF]; }));
-  var pC = sumNN(sorted.map(function(u){ var t=tierObj((selections[sk(u.unit,u.care)]||{}).tier||tierForWtd(u.wtdAvg)); return u[t.csF]; }));
+  var pI = sumNN(sorted.map(function(u){ var e=getEffectiveRates(u); return e.il; }));
+  var pA = sumNN(sorted.map(function(u){ var e=getEffectiveRates(u); return e.al; }));
+  var pM = sumNN(sorted.map(function(u){ var e=getEffectiveRates(u); return e.mc; }));
+  var pC = sumNN(sorted.map(function(u){ var e=getEffectiveRates(u); return e.cs; }));
 
   html += "<tr style=\"background:#F0EDE6;font-weight:700;border-top:2px solid #1A1816\">"
         + "<td colspan=\"6\" style=\"font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:#6B6760;padding:8px 10px;text-align:left\">Totals (" + sorted.length + " units)</td>"
@@ -945,15 +1011,16 @@ async function generatePdf() {
   var head = [["UNIT", "CARE", "TYPE", "FLOORPLAN", "SQ FT", "WTD%", "BASE RATE", "TIER", "IL RATE", "AL RATE", "MC RATE", "CS RATE"]];
   var body = sorted.map(function(u) {
     var sel = selections[sk(u.unit, u.care)] || {};
-    var tk = sel.tier || tierForWtd(u.wtdAvg);
-    var t = tierObj(tk);
+    var eff = getEffectiveRates(u, sel);
+    var t = eff.tierObj;
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    var tierLabel = eff.tier === "custom" ? (sel.customRate != null ? "Custom $" + sel.customRate.toLocaleString() : "Custom") : t.label;
     return [
       u.unit, u.care, u.type, u.floorplan || "",
       u.sqft ? Math.round(u.sqft).toString() : "",
       u.wtdAvg !== null ? Math.round(u.wtdAvg * 100) + "%" : "",
-      fmtM(pBase), t.label,
-      fmtM(u[t.ilF]), fmtM(u[t.alF]), fmtM(u[t.mcF]), fmtM(u[t.csF])
+      fmtM(pBase), tierLabel,
+      fmtM(eff.il), fmtM(eff.al), fmtM(eff.mc), fmtM(eff.cs)
     ];
   });
 
@@ -1145,17 +1212,16 @@ function buildXlsx() {
   // Data rows start at row 4
   sorted.forEach(function(u) {
     var s = selections[sk(u.unit,u.care)] || {};
-    var tk = s.tier || tierForWtd(u.wtdAvg);
-    var t  = tierObj(tk);
+    var eff = getEffectiveRates(u, s);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-    var ilV = u[t.ilF], alV = u[t.alF], mcV = u[t.mcF], csV = u[t.csF];
+    var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom $" + s.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
     aoa.push([
       currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
       u.sqft ? Math.round(u.sqft) : "",
       u.wtdAvg !== null ? u.wtdAvg : "",
-      pBase !== null ? pBase : "", t.label,
-      ilV !== null ? ilV : "", alV !== null ? alV : "",
-      mcV !== null ? mcV : "", csV !== null ? csV : ""
+      pBase !== null ? pBase : "", tierLabel,
+      eff.il !== null ? eff.il : "", eff.al !== null ? eff.al : "",
+      eff.mc !== null ? eff.mc : "", eff.cs !== null ? eff.cs : ""
     ]);
   });
 
@@ -1163,15 +1229,13 @@ function buildXlsx() {
   var totBase=0, totIL=0, totAL=0, totMC=0, totCS=0;
   var hBase=false, hIL=false, hAL=false, hMC=false, hCS=false;
   sorted.forEach(function(u){
-    var s = selections[sk(u.unit,u.care)] || {};
-    var tk = s.tier || tierForWtd(u.wtdAvg);
-    var t = tierObj(tk);
+    var eff = getEffectiveRates(u);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     if(pBase!==null){hBase=true;totBase+=pBase;}
-    if(u[t.ilF]!==null){hIL=true;totIL+=u[t.ilF];}
-    if(u[t.alF]!==null){hAL=true;totAL+=u[t.alF];}
-    if(u[t.mcF]!==null){hMC=true;totMC+=u[t.mcF];}
-    if(u[t.csF]!==null){hCS=true;totCS+=u[t.csF];}
+    if(eff.il!==null){hIL=true;totIL+=eff.il;}
+    if(eff.al!==null){hAL=true;totAL+=eff.al;}
+    if(eff.mc!==null){hMC=true;totMC+=eff.mc;}
+    if(eff.cs!==null){hCS=true;totCS+=eff.cs;}
   });
   aoa.push(["Totals ("+sorted.length+" units)","","","","","","",
     hBase?totBase:"", "",
@@ -1278,9 +1342,10 @@ function buildEmailHtml(spResult) {
   var rows = "";
   sorted.forEach(function(u, i) {
     var s = selections[sk(u.unit,u.care)] || {};
-    var tk = s.tier || tierForWtd(u.wtdAvg);
-    var t  = tierObj(tk);
+    var eff = getEffectiveRates(u, s);
+    var t  = eff.tierObj;
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom" : "Custom") : t.label;
     var bg = i%2===0 ? "#ffffff" : "#f9f8f6";
     var careBg = u.care==="CS"?"#FDF4E3":u.care==="MC"?"#F3EDF9":"#E6F1FB";
     var careColor = u.care==="CS"?"#7A4A00":u.care==="MC"?"#6B3A8A":"#185FA5";
@@ -1291,11 +1356,11 @@ function buildEmailHtml(spResult) {
       + '<td style="padding:6px 10px;font-size:11px">'+(u.floorplan||"&mdash;")+'</td>'
       + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;text-align:right">'+(u.sqft?Math.round(u.sqft).toLocaleString():"&mdash;")+'</td>'
       + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;text-align:right;font-weight:600;color:#333">'+fmtE(pBase)+'</td>'
-      + '<td style="padding:6px 10px;font-size:10px;text-align:center"><span style="background:'+t.color+'22;color:'+t.color+';padding:1px 8px;border-radius:10px;font-weight:700">'+t.label+'</span></td>'
-      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#185FA5;text-align:right">'+fmtE(u[t.ilF])+'</td>'
-      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#8B4513;text-align:right">'+fmtE(u[t.alF])+'</td>'
-      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#6B3A8A;text-align:right">'+fmtE(u[t.mcF])+'</td>'
-      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#7A4A00;text-align:right">'+fmtE(u[t.csF])+'</td>'
+      + '<td style="padding:6px 10px;font-size:10px;text-align:center"><span style="background:'+t.color+'22;color:'+t.color+';padding:1px 8px;border-radius:10px;font-weight:700">'+tierLabel+'</span></td>'
+      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#185FA5;text-align:right">'+fmtE(eff.il)+'</td>'
+      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#8B4513;text-align:right">'+fmtE(eff.al)+'</td>'
+      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#6B3A8A;text-align:right">'+fmtE(eff.mc)+'</td>'
+      + '<td style="padding:6px 10px;font-family:monospace;font-size:11px;font-weight:700;color:#7A4A00;text-align:right">'+fmtE(eff.cs)+'</td>'
       + '</tr>';
   });
 
