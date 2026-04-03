@@ -250,6 +250,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
                 <label style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;display:block">Business Office Manager</label>
                 <input class="publish-input" id="pub-email-bom" type="email" placeholder="email@example.com">
               </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-secondary);margin-bottom:3px;display:block">Sales Assistant</label>
+                <input class="publish-input" id="pub-email-sa" type="email" placeholder="email@example.com">
+              </div>
             </div>
             <div class="publish-status status-idle" id="email-status">Ready to send</div>
           </div>
@@ -1426,6 +1430,7 @@ function resetPublish() {
   document.getElementById("pub-email-sd").value = "";
   document.getElementById("pub-email-ed").value = "";
   document.getElementById("pub-email-bom").value = "";
+  document.getElementById("pub-email-sa").value = "";
 }
 
 // ── Main publish flow ─────────────────────────────────────────────────────────
@@ -1435,7 +1440,8 @@ async function runPublish() {
   var emails = [
     document.getElementById("pub-email-sd").value.trim(),
     document.getElementById("pub-email-ed").value.trim(),
-    document.getElementById("pub-email-bom").value.trim()
+    document.getElementById("pub-email-bom").value.trim(),
+    document.getElementById("pub-email-sa").value.trim()
   ].filter(Boolean);
   if (!emails.length) { alert("Please enter at least one recipient email address."); return; }
 
