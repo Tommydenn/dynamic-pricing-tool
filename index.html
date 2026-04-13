@@ -48,9 +48,9 @@ body{font-family:'Source Serif Pro',system-ui,sans-serif;background:var(--bg);co
 .stat-val{font-size:26px;font-weight:300;color:var(--text);font-family:'DM Mono',monospace}.stat-val.accent{color:var(--accent)}
 .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap}
 .search-wrap{position:relative;flex:1;min-width:200px}
-.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);font-size:13px;pointer-events:none}
+.search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-tertiary);font-size:14px;pointer-events:none;line-height:1}
 input[type="text"],select{font-family:'Source Serif Pro',sans-serif;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);color:var(--text);outline:none;transition:border-color .15s}
-input[type="text"]:focus,select:focus{border-color:var(--accent-mid)}.search-input{padding-left:30px;width:100%}.filter-select{min-width:150px}
+input[type="text"]:focus,select:focus{border-color:var(--accent-mid)}.search-input{padding-left:12px;width:100%}.filter-select{min-width:150px}
 .count-badge{background:var(--surface2);color:var(--text-secondary);border-radius:20px;padding:5px 12px;font-size:12px;font-family:'DM Mono',monospace;white-space:nowrap}
 .table-wrap{background:var(--surface);border:1px solid var(--border-light);border-radius:var(--radius-lg);overflow:hidden;overflow-x:auto}
 table{width:100%;border-collapse:collapse;min-width:900px}
@@ -118,6 +118,11 @@ tbody td{padding:9px 12px;vertical-align:middle}
   @media print { .publish-panel { display: none !important; } }
 
   @media print{@page{margin:1.2cm;size:landscape}body{background:#fff}.sidebar,.page-header,.print-actions,.toolbar,.community-select-wrap,.stats-grid{display:none!important}.main{margin:0;padding:0}.page{display:block!important}.page:not(#page-print){display:none!important}.print-sheet{box-shadow:none;border:none;padding:0;border-radius:0}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+.unit-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+#select-all-cb{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+.batch-tier-btn{font-size:12px!important;padding:5px 14px!important;min-width:0!important;border-radius:8px!important;font-weight:600!important;letter-spacing:.02em;transition:all .15s}
+.batch-tier-btn:hover{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;transform:translateY(-1px);box-shadow:0 2px 6px rgba(26,106,154,.25)}
+#batch-bar{transition:all .2s ease;box-shadow:0 1px 4px rgba(26,106,154,.08)}
 </style>
 </head>
 <body>
@@ -180,9 +185,19 @@ tbody td{padding:9px 12px;vertical-align:middle}
     </div>
     <div id="rates-content" style="display:none">
       <div class="toolbar">
+        <div id="batch-bar" style="display:none;align-items:center;gap:12px;padding:12px 20px;background:linear-gradient(135deg,#1a6a9a0e,#1a6a9a06);border:1px solid #1a6a9a30;border-radius:12px;margin-bottom:16px">
+          <span id="batch-count" style="font-size:14px;font-weight:700;color:var(--accent);white-space:nowrap;min-width:110px">0 selected</span>
+          <span style="font-size:12px;color:var(--text-secondary);margin-right:2px">Set tier:</span>
+          <button class="btn batch-tier-btn" onclick="batchSetTier('base')">Base</button>
+          <button class="btn batch-tier-btn" onclick="batchSetTier('p5')">+5%</button>
+          <button class="btn batch-tier-btn" onclick="batchSetTier('p10')">+10%</button>
+          <button class="btn batch-tier-btn" onclick="batchSetTier('p15')">+15%</button>
+          <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+          <button class="btn batch-tier-btn" style="color:#B84233;border-color:#B8423344" onclick="batchSetTier('m5')">-5%</button>
+          <button class="btn batch-tier-btn" style="color:#8B2E22;border-color:#8B2E2244" onclick="batchSetTier('m10')">-10%</button>
+        </div>
         <div class="search-wrap">
-          <span class="search-icon">&#128269;</span>
-          <input type="text" class="search-input" placeholder="Search unit # or floorplan&hellip;" oninput="filterUnits(this.value)">
+                  <input type="text" class="search-input" placeholder="Search unit # or floorplan&hellip;" oninput="filterUnits(this.value)">
         </div>
         <select class="filter-select" onchange="filterByType(this.value)">
           <option value="">All unit types</option>
@@ -203,7 +218,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Unit</th><th>Care</th><th>Type</th><th>Floorplan</th>
+            <th style="width:32px;text-align:center"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)" title="Select all"></th><th>Unit</th><th>Care</th><th>Type</th><th>Floorplan</th>
             <th>Sq Ft</th><th>Wtd Avg</th><th>Base Rate</th>
             <th style="text-align:center">Tier</th>
             <th class="il-h">IL Rate</th><th class="al-h">AL Rate</th>
@@ -293,6 +308,8 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <div class="tier-key-item"><span class="tier-key-dot" style="background:#c07830"></span>+5%</div>
           <div class="tier-key-item"><span class="tier-key-dot" style="background:#1a6a9a"></span>+10%</div>
           <div class="tier-key-item"><span class="tier-key-dot" style="background:#2D5A3D"></span>+15%</div>
+          <div class="tier-key-item"><span class="tier-key-dot" style="background:#B84233"></span>-5%</div>
+          <div class="tier-key-item"><span class="tier-key-dot" style="background:#8B2E22"></span>-10%</div>
           <span style="margin-left:auto;font-size:10px;color:#A09D98">&#9733; = overridden from default</span>
         </div>
         <table class="pt">
@@ -350,6 +367,8 @@ var TIERS = [
   {key:"p5",  label:"+5%", ilF:"il5",  alF:"al5",  mcF:"mc5",  csF:"cs5",  color:"#c07830"},
   {key:"p10", label:"+10%",ilF:"il10", alF:"al10", mcF:"mc10", csF:"cs10", color:"#1a6a9a"},
   {key:"p15", label:"+15%",ilF:"il15", alF:"al15", mcF:"mc15", csF:"cs15", color:"#2D5A3D"},
+  {key:"m5",  label:"-5%", ilF:"ilM5", alF:"alM5", mcF:"mcM5", csF:"csM5", color:"#B84233"},
+  {key:"m10", label:"-10%",ilF:"ilM10",alF:"alM10",mcF:"mcM10",csF:"csM10",color:"#8B2E22"},
   {key:"custom",label:"Custom",ilF:null,alF:null,mcF:null,csF:null,color:"#9B5DE5"}
 ];
 
@@ -386,12 +405,16 @@ function loadCommunity(name) {
       il5:  b!==null ? Math.round(b * 1.05 / 5) * 5 : null,
       il10: b!==null ? Math.round(b * 1.10 / 5) * 5 : null,
       il15: b!==null ? Math.round(b * 1.15 / 5) * 5 : null,
+      ilM5: b!==null ? Math.round(b * 0.95 / 5) * 5 : null,
+      ilM10:b!==null ? Math.round(b * 0.90 / 5) * 5 : null,
       alBase: b!==null ? Math.round((b + af) / 5) * 5 : null,
       al5:   b!==null ? Math.round((b * 1.05 + af) / 5) * 5 : null,
       al10:  b!==null ? Math.round((b * 1.10 + af) / 5) * 5 : null,
       al15:  b!==null ? Math.round((b * 1.15 + af) / 5) * 5 : null,
-      mcBase:null, mc5:null, mc10:null, mc15:null,
-      csBase:null, cs5:null, cs10:null, cs15:null
+      alM5:  b!==null ? Math.round((b * 0.95 + af) / 5) * 5 : null,
+      alM10: b!==null ? Math.round((b * 0.90 + af) / 5) * 5 : null,
+      mcBase:null, mc5:null, mc10:null, mc15:null, mcM5:null, mcM10:null,
+      csBase:null, cs5:null, cs10:null, cs15:null, csM5:null, csM10:null
     });
   });
 
@@ -400,13 +423,15 @@ function loadCommunity(name) {
     var total = r.base!==null ? r.base + mf : null;
     loaded.push({
       unit:r.unit, care:"MC", type:r.type, floorplan:r.floorplan, sqft:r.sqft, wtdAvg:r.wtd,
-      ilBase:null, il5:null, il10:null, il15:null,
-      alBase:null, al5:null, al10:null, al15:null,
+      ilBase:null, il5:null, il10:null, il15:null, ilM5:null, ilM10:null,
+      alBase:null, al5:null, al10:null, al15:null, alM5:null, alM10:null,
       mcBase: total,
       mc5:   total!==null ? Math.round(total * 1.05 / 5) * 5 : null,
       mc10:  total!==null ? Math.round(total * 1.10 / 5) * 5 : null,
       mc15:  total!==null ? Math.round(total * 1.15 / 5) * 5 : null,
-      csBase:null, cs5:null, cs10:null, cs15:null
+      mcM5:  total!==null ? Math.round(total * 0.95 / 5) * 5 : null,
+      mcM10: total!==null ? Math.round(total * 0.90 / 5) * 5 : null,
+      csBase:null, cs5:null, cs10:null, cs15:null, csM5:null, csM10:null
     });
   });
 
@@ -415,13 +440,15 @@ function loadCommunity(name) {
     var total = r.base!==null ? r.base + cf : null;
     loaded.push({
       unit:r.unit, care:"CS", type:r.type, floorplan:r.floorplan, sqft:r.sqft, wtdAvg:r.wtd,
-      ilBase:null, il5:null, il10:null, il15:null,
-      alBase:null, al5:null, al10:null, al15:null,
-      mcBase:null, mc5:null, mc10:null, mc15:null,
+      ilBase:null, il5:null, il10:null, il15:null, ilM5:null, ilM10:null,
+      alBase:null, al5:null, al10:null, al15:null, alM5:null, alM10:null,
+      mcBase:null, mc5:null, mc10:null, mc15:null, mcM5:null, mcM10:null,
       csBase: total,
       cs5:   total!==null ? Math.round(total * 1.05 / 5) * 5 : null,
       cs10:  total!==null ? Math.round(total * 1.10 / 5) * 5 : null,
-      cs15:  total!==null ? Math.round(total * 1.15 / 5) * 5 : null
+      cs15:  total!==null ? Math.round(total * 1.15 / 5) * 5 : null,
+      csM5:  total!==null ? Math.round(total * 0.95 / 5) * 5 : null,
+      csM10: total!==null ? Math.round(total * 0.90 / 5) * 5 : null
     });
   });
 
@@ -643,7 +670,15 @@ function renderTable() {
                  + " onkeydown=\"if(event.key==='Enter'){this.blur()}\">";
     }
 
-    html += "<tr class=\"" + rc + "\">"
+    var isNeg = (ck === "m5" || ck === "m10");
+    var isBelowBase = false;
+    if (ck === "custom" && s.customRate != null && baseVal !== null) {
+      isBelowBase = Number(s.customRate) < baseVal;
+    }
+    var rowWarn = (isNeg || isBelowBase) ? "background:rgba(184,66,51,0.13);" : "";
+
+    html += "<tr class=\"" + rc + "\" style=\"" + rowWarn + "\">"
+          + "<td style=\"text-align:center;width:32px\"><input type=\"checkbox\" class=\"unit-cb\" data-unit=\"" + uid + "\" data-care=\"" + u.care + "\" onchange=\"updateBatchBar()\"></td>"
           + "<td class=\"unit-num\">" + u.unit + "</td>"
           + "<td>" + carePill(u.care) + "</td>"
           + "<td>" + typePill(u.type) + "</td>"
@@ -671,7 +706,7 @@ function renderTable() {
   var csTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.cs; }));
 
   html += "<tr style=\"background:var(--surface2);font-weight:600;border-top:2px solid var(--border)\">"
-        + "<td colspan=\"6\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
+        + "<td colspan=\"7\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
         + "<td class=\"pc" + (bTot  !== null ? "" : " nil") + "\">" + fmt(bTot)  + "</td>"
         + "<td></td>"
         + "<td class=\"pc il" + (ilTot !== null ? "" : " nil") + "\">" + fmt(ilTot) + "</td>"
@@ -710,6 +745,50 @@ function resetToDefaults() {
     selections[sk(u.unit, u.care)] = {tier: tierForWtd(u.wtdAvg), isDefault: true};
   });
   renderTable(); updateSidebar();
+}
+
+// ── Batch selection ──
+function toggleSelectAll(checked) {
+  document.querySelectorAll(".unit-cb").forEach(function(cb) { cb.checked = checked; });
+  updateBatchBar();
+}
+function getSelectedUnits() {
+  var selected = [];
+  document.querySelectorAll(".unit-cb:checked").forEach(function(cb) {
+    var unit = cb.getAttribute("data-unit");
+    var care = cb.getAttribute("data-care");
+    for (var i = 0; i < units.length; i++) {
+      if (units[i].unit === unit && units[i].care === care) { selected.push(units[i]); break; }
+    }
+  });
+  return selected;
+}
+function updateBatchBar() {
+  var count = document.querySelectorAll(".unit-cb:checked").length;
+  var bar = document.getElementById("batch-bar");
+  if (count > 0) {
+    bar.style.display = "flex";
+    document.getElementById("batch-count").textContent = count + " unit" + (count > 1 ? "s" : "") + " selected";
+  } else {
+    bar.style.display = "none";
+  }
+  var allCb = document.getElementById("select-all-cb");
+  if (allCb) {
+    var total = document.querySelectorAll(".unit-cb").length;
+    allCb.checked = (count === total && total > 0);
+    allCb.indeterminate = (count > 0 && count < total);
+  }
+}
+function batchSetTier(tierKey) {
+  var selected = getSelectedUnits();
+  selected.forEach(function(u) {
+    var s = sk(u.unit, u.care);
+    selections[s] = {tier: tierKey, isDefault: (tierKey === tierForWtd(u.wtdAvg))};
+  });
+  document.querySelectorAll(".unit-cb").forEach(function(cb) { cb.checked = false; });
+  updateBatchBar();
+  updateSidebar();
+  renderTable();
 }
 
 function buildPrintSheet() {
@@ -754,8 +833,11 @@ function buildPrintSheet() {
     var tierLabel = tk === "custom" ? (s.customRate != null ? "Custom $" + s.customRate.toLocaleString() : "Custom") : t.label;
     var careColor = u.care==="CS" ? "#7A4A00" : u.care==="MC" ? "#6B3A8A" : "#185FA5";
     var careBg    = u.care==="CS" ? "#FDF4E3" : u.care==="MC" ? "#F3EDF9" : "#E6F1FB";
+    var printNeg = (tk === "m5" || tk === "m10");
+    var printBelowBase = (tk === "custom" && s.customRate != null && pb !== null && Number(s.customRate) < pb);
+    var printWarn = (printNeg || printBelowBase) ? "background:#FDE8E6;" : "";
 
-    html += "<tr class=\"" + rc + "\">"
+    html += "<tr class=\"" + rc + "\" style=\"" + printWarn + "\">"
           + "<td class=\"uc\">" + u.unit + "</td>"
           + "<td><span style=\"font-size:9px;font-weight:700;letter-spacing:.05em;padding:1px 6px;border-radius:8px;background:" + careBg + ";color:" + careColor + "\">" + u.care + "</span></td>"
           + "<td>" + u.type + "</td>"
@@ -996,7 +1078,8 @@ async function generatePdf() {
   doc.text("TIERS:", 44, 88);
   var dots = [
     { c: [192, 112, 144], l: "Base" }, { c: [192, 120, 48], l: "+5%" },
-    { c: [26, 106, 154], l: "+10%" }, { c: [45, 90, 61], l: "+15%" }
+    { c: [26, 106, 154], l: "+10%" }, { c: [45, 90, 61], l: "+15%" },
+    { c: [184, 66, 51], l: "-5%" }, { c: [139, 46, 34], l: "-10%" }
   ];
   var dx = 80;
   dots.forEach(function(d) {
@@ -1013,12 +1096,17 @@ async function generatePdf() {
   });
 
   var head = [["UNIT", "CARE", "TYPE", "FLOORPLAN", "SQ FT", "WTD%", "BASE RATE", "TIER", "IL RATE", "AL RATE", "MC RATE", "CS RATE"]];
-  var body = sorted.map(function(u) {
+  var pdfWarnRows = {};
+  var body = sorted.map(function(u, idx) {
     var sel = selections[sk(u.unit, u.care)] || {};
     var eff = getEffectiveRates(u, sel);
     var t = eff.tierObj;
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var tierLabel = eff.tier === "custom" ? (sel.customRate != null ? "Custom $" + sel.customRate.toLocaleString() : "Custom") : t.label;
+    var tk = eff.tier;
+    if (tk === "m5" || tk === "m10" || (tk === "custom" && sel.customRate != null && pBase !== null && Number(sel.customRate) < pBase)) {
+      pdfWarnRows[idx] = true;
+    }
     return [
       u.unit, u.care, u.type, u.floorplan || "",
       u.sqft ? Math.round(u.sqft).toString() : "",
@@ -1060,7 +1148,9 @@ async function generatePdf() {
         return;
       }
       var care = data.row.raw[1];
-      if (care === "MC") data.cell.styles.fillColor = data.row.index % 2 === 0 ? [253, 251, 255] : [247, 242, 252];
+      if (pdfWarnRows[data.row.index]) {
+        data.cell.styles.fillColor = data.row.index % 2 === 0 ? [253, 226, 222] : [248, 214, 209];
+      } else if (care === "MC") data.cell.styles.fillColor = data.row.index % 2 === 0 ? [253, 251, 255] : [247, 242, 252];
       else if (care === "CS") data.cell.styles.fillColor = data.row.index % 2 === 0 ? [255, 253, 246] : [253, 247, 232];
       else data.cell.styles.fillColor = data.row.index % 2 === 0 ? [255, 255, 255] : [250, 250, 248];
       if (data.column.index === 1) {
@@ -1197,6 +1287,11 @@ function buildXlsx() {
   var totalMoneyStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
   var totalCenterStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
   var feeStyle = {font:{name:"Calibri",sz:9,italic:true,color:{rgb:"4A6670"}}, alignment:{horizontal:"left",vertical:"center"}};
+  var warnBg = "FDE2DE";
+  var warnStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{vertical:"center"}};
+  var warnCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  var warnMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
+  var warnPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
 
   // ── Build rows ──
   var aoa = [];
@@ -1214,11 +1309,16 @@ function buildXlsx() {
   aoa.push(["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]);
 
   // Data rows start at row 4
-  sorted.forEach(function(u) {
+  var xlWarnRows = {};
+  sorted.forEach(function(u, idx) {
     var s = selections[sk(u.unit,u.care)] || {};
     var eff = getEffectiveRates(u, s);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom $" + s.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
+    var tk = eff.tier;
+    if (tk === "m5" || tk === "m10" || (tk === "custom" && s.customRate != null && pBase !== null && Number(s.customRate) < pBase)) {
+      xlWarnRows[idx] = true;
+    }
     aoa.push([
       currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
       u.sqft ? Math.round(u.sqft) : "",
@@ -1273,13 +1373,21 @@ function buildXlsx() {
   var dataEnd = dataStart + sorted.length;
   for(var r=dataStart;r<dataEnd;r++){
     var isAlt = (r-dataStart)%2===1;
+    var isWarn = xlWarnRows[r-dataStart];
     for(var c=0;c<=12;c++){
       var cr = XLSX.utils.encode_cell({r:r,c:c});
       if(!ws[cr]) ws[cr]={v:"",t:"s"};
-      if(c===6){ ws[cr].s = isAlt?altPct:cellPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
-      else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = isAlt?altMoney:cellMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
-      else if(c===2||c===5||c===8){ ws[cr].s = isAlt?altCenter:cellCenter; }
-      else { ws[cr].s = isAlt?altStyle:cellStyle; }
+      if(isWarn){
+        if(c===6){ ws[cr].s = warnPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
+        else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = warnMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
+        else if(c===2||c===5||c===8){ ws[cr].s = warnCenter; }
+        else { ws[cr].s = warnStyle; }
+      } else {
+        if(c===6){ ws[cr].s = isAlt?altPct:cellPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
+        else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = isAlt?altMoney:cellMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
+        else if(c===2||c===5||c===8){ ws[cr].s = isAlt?altCenter:cellCenter; }
+        else { ws[cr].s = isAlt?altStyle:cellStyle; }
+      }
     }
   }
 
