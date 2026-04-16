@@ -721,9 +721,9 @@ function renderTable() {
           + "<td>" + typePill(u.type) + "</td>"
           + "<td><span class=\"fp-name\">" + (u.floorplan || "\u2014") + "</span></td>"
           + "<td><span class=\"sqft-val\">" + (u.sqft ? Math.round(u.sqft).toLocaleString() : "\u2014") + "</span></td>"
-          + "<td style=\"text-align:center\">" + (u.occupied === 1 ? "\u25CF" : u.occupied === 0 ? "\u25CB" : "\u2014") + "</td>"
+          + "<td style=\"text-align:center\">" + (u.occupied === 1 ? "<span style=\"background:#d1fae5;color:#065f46;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.04em\">OCC</span>" : u.occupied === 0 ? "<span style=\"background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:.04em\">VAC</span>" : "\u2014") + "</td>"
           + "<td>" + wtdBadge(u.wtdAvg) + "</td>"
-          + "<td style=\"font-family:DM Mono,monospace;text-align:right\">" + fmt(u.inPlaceRent) + "</td>"
+          + "<td class=\"pc\" style=\"text-align:center\">" + fmt(u.inPlaceRent) + "</td>"
           + "<td class=\"pc " + bc + (baseVal === null ? " nil" : "") + "\">" + fmt(baseVal) + "</td>"
           + "<td style=\"text-align:center\"><div class=\"tier-wrap\"><select class=\"tier-select\""
           +   " style=\"border-color:" + t.color + "44;color:" + t.color + "\""
@@ -745,6 +745,8 @@ function renderTable() {
   var mcTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.mc; }));
   var csTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.cs; }));
   var occCount = filtered.filter(function(u){ return u.occupied === 1; }).length;
+  var validWtd = filtered.filter(function(u){ return u.wtdAvg != null && !isNaN(u.wtdAvg); });
+  var avgWtd = validWtd.length ? validWtd.reduce(function(a,u){ return a + u.wtdAvg; }, 0) / validWtd.length : null;
   var tierPctMap = {base:0, p5:5, p10:10, p15:15, m5:-5, m10:-10};
   var tierVals = filtered.map(function(u) {
     var s = selections[sk(u.unit, u.care)] || {};
@@ -756,11 +758,11 @@ function renderTable() {
 
   html += "<tr style=\"background:var(--surface2);font-weight:600;border-top:2px solid var(--border)\">"
         + "<td colspan=\"6\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
-        + "<td style=\"text-align:center;font-size:12px;color:var(--text-secondary)\">" + occCount + " / " + filtered.length + "</td>"
-        + "<td></td>"
-        + "<td class=\"pc" + (ipTot !== null ? "" : " nil") + "\" style=\"font-family:DM Mono,monospace;text-align:right\">" + fmt(ipTot) + "</td>"
+        + "<td class=\"pc\" style=\"text-align:center\">" + occCount + " / " + filtered.length + "</td>"
+        + "<td style=\"text-align:center\">" + wtdBadge(avgWtd) + "</td>"
+        + "<td class=\"pc" + (ipTot !== null ? "" : " nil") + "\" style=\"text-align:center\">" + fmt(ipTot) + "</td>"
         + "<td class=\"pc" + (bTot  !== null ? "" : " nil") + "\">" + fmt(bTot)  + "</td>"
-        + "<td style=\"text-align:center;font-size:12px;color:var(--text-secondary)\">" + avgTierStr + "</td>"
+        + "<td class=\"pc\" style=\"text-align:center\">" + avgTierStr + "</td>"
         + "<td class=\"pc il" + (ilTot !== null ? "" : " nil") + "\">" + fmt(ilTot) + "</td>"
         + "<td class=\"pc al" + (alTot !== null ? "" : " nil") + "\">" + fmt(alTot) + "</td>"
         + "<td class=\"pc mc" + (mcTot !== null ? "" : " nil") + "\">" + fmt(mcTot) + "</td>"
