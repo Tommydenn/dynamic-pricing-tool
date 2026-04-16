@@ -24,7 +24,12 @@ export default async function handler(req, res) {
 
     // Step 2: Query dataset for today's snapshot
     const datasetId = 'e616d17f-be36-494d-8b31-f45a0850dbd8';
-    const sql = `SELECT community_name, Unit_Number, care_level_mapped, unit_type_mapped, attr_floorplan, sq_ft, weighted_avg_occupancy, unit_type_rate, in_place_base_rent, in_place_package, total_in_place_rent, is_occupied FROM table WHERE report_date = CURRENT_DATE`;
+    // Columns by index:
+    //  0:community_name  1:Unit_Number  2:care_level_mapped  3:unit_type_mapped
+    //  4:attr_floorplan  5:sq_ft  6:weighted_avg_occupancy  7:unit_type_rate
+    //  8:in_place_base_rent  9:in_place_package  10:total_in_place_rent
+    //  11:is_occupied  12:SubDivide_Type
+    const sql = `SELECT community_name, Unit_Number, care_level_mapped, unit_type_mapped, attr_floorplan, sq_ft, weighted_avg_occupancy, unit_type_rate, in_place_base_rent, in_place_package, total_in_place_rent, is_occupied, SubDivide_Type FROM table WHERE report_date = CURRENT_DATE AND unit_type_rate > 0`;
 
     const queryResp = await fetch(
       `https://api.domo.com/v1/datasets/query/execute/${datasetId}`,
@@ -59,13 +64,16 @@ export default async function handler(req, res) {
       var inPlacePkg   = row[9]  != null ? row[9] : 0;
       var inPlaceTotal = row[10] != null ? row[10] : 0;
       var occupied     = row[11] != null ? row[11] : 0;
+      var subdivide    = row[12] || 'P';  // 'A', 'B', or 'P' (private)
+
+      var record = { community:community, unit:unit, care:care, type:type, floorplan:floorplan, sqft:sqft, wtd:wtd, base:base, inPlaceRent:inPlaceRent, inPlacePackage:inPlacePkg, inPlaceTotal:inPlaceTotal, occupied:occupied, subdivide:subdivide };
 
       if (care === 'IL' || care === 'AL' || care === 'Flex') {
-        il.push({ community:community, unit:unit, care:care, type:type, floorplan:floorplan, sqft:sqft, wtd:wtd, base:base, inPlaceRent:inPlaceRent, inPlacePackage:inPlacePkg, inPlaceTotal:inPlaceTotal, occupied:occupied });
+        il.push(record);
       } else if (care === 'MC') {
-        mc.push({ community:community, unit:unit, type:type, floorplan:floorplan, sqft:sqft, wtd:wtd, base:base, inPlaceRent:inPlaceRent, inPlacePackage:inPlacePkg, inPlaceTotal:inPlaceTotal, occupied:occupied });
+        mc.push(record);
       } else if (care === 'CS') {
-        cs.push({ community:community, unit:unit, type:type, floorplan:floorplan, sqft:sqft, wtd:wtd, base:base, inPlaceRent:inPlaceRent, inPlacePackage:inPlacePkg, inPlaceTotal:inPlaceTotal, occupied:occupied });
+        cs.push(record);
       }
       // Guest units are excluded from pricing
     });
