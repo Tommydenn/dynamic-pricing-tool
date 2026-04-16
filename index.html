@@ -213,13 +213,18 @@ tbody td{padding:9px 12px;vertical-align:middle}
           <option value="MC">MC only</option>
           <option value="CS">CS only</option>
         </select>
+        <select class="filter-select" onchange="filterByOcc(this.value)">
+          <option value="">All units</option>
+          <option value="occupied">Occupied only</option>
+          <option value="vacant">Vacant only</option>
+        </select>
         <span class="count-badge" id="unit-count">&mdash;</span>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr>
             <th style="width:32px;text-align:center"><input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)" title="Select all"></th><th>Unit</th><th>Care</th><th>Type</th><th>Floorplan</th>
-            <th>Sq Ft</th><th>In-Place</th><th>Occ</th><th>Wtd Avg</th><th>Base Rate</th>
+            <th>Sq Ft</th><th>Occ</th><th>Wtd Avg</th><th>In-Place Rent</th><th>Base Rate</th>
             <th style="text-align:center">Tier</th>
             <th class="il-h">IL Rate</th><th class="al-h">AL Rate</th>
             <th class="mc-h">MC Rate</th><th class="cs-h">CS Rate</th>
@@ -391,7 +396,7 @@ var TIERS = [
 ];
 
 var units = [], selections = {}, currentCommunity = "",
-    currentSearch = "", currentTypeFilter = "", currentCareFilter = "";
+    currentSearch = "", currentTypeFilter = "", currentCareFilter = "", currentOccFilter = "";
 
 function getFees(name) {
   for (var i = 0; i < SERVICE_FEES.length; i++)
@@ -578,7 +583,7 @@ function updateSidebar() {
 
 function selectCommunity(name) {
   currentCommunity = name;
-  currentSearch = ""; currentTypeFilter = ""; currentCareFilter = "";
+  currentSearch = ""; currentTypeFilter = ""; currentCareFilter = ""; currentOccFilter = "";
   var si = document.querySelector(".search-input");
   if (si) si.value = "";
   document.querySelectorAll(".filter-select").forEach(function(s) { s.value = ""; });
@@ -647,12 +652,14 @@ function getFiltered() {
                || (u.floorplan||"").toLowerCase().indexOf(q) >= 0
                || u.type.toLowerCase().indexOf(q) >= 0)
         && (!currentTypeFilter || u.type === currentTypeFilter)
-        && (!currentCareFilter || u.care === currentCareFilter);
+        && (!currentCareFilter || u.care === currentCareFilter)
+        && (!currentOccFilter || (currentOccFilter === "occupied" ? u.occupied === 1 : u.occupied !== 1));
   });
 }
 function filterUnits(v)  { currentSearch = v;      renderTable(); }
 function filterByType(v) { currentTypeFilter = v;  renderTable(); }
 function filterByCare(v) { currentCareFilter = v;  renderTable(); }
+function filterByOcc(v)  { currentOccFilter = v;   renderTable(); }
 
 function sumNN(arr) {
   var hasVal = false, s = 0;
@@ -714,9 +721,9 @@ function renderTable() {
           + "<td>" + typePill(u.type) + "</td>"
           + "<td><span class=\"fp-name\">" + (u.floorplan || "\u2014") + "</span></td>"
           + "<td><span class=\"sqft-val\">" + (u.sqft ? Math.round(u.sqft).toLocaleString() : "\u2014") + "</span></td>"
-          + "<td style=\"font-family:DM Mono,monospace;text-align:right\">" + fmt(u.inPlaceTotal) + "</td>"
           + "<td style=\"text-align:center\">" + (u.occupied === 1 ? "\u25CF" : u.occupied === 0 ? "\u25CB" : "\u2014") + "</td>"
           + "<td>" + wtdBadge(u.wtdAvg) + "</td>"
+          + "<td style=\"font-family:DM Mono,monospace;text-align:right\">" + fmt(u.inPlaceRent) + "</td>"
           + "<td class=\"pc " + bc + (baseVal === null ? " nil" : "") + "\">" + fmt(baseVal) + "</td>"
           + "<td style=\"text-align:center\"><div class=\"tier-wrap\"><select class=\"tier-select\""
           +   " style=\"border-color:" + t.color + "44;color:" + t.color + "\""
@@ -732,15 +739,28 @@ function renderTable() {
 
   // Totals row
   var bTot  = sumNN(filtered.map(function(u){ return (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null; }));
+  var ipTot = sumNN(filtered.map(function(u){ return u.inPlaceRent != null && u.inPlaceRent > 0 ? u.inPlaceRent : null; }));
   var ilTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.il; }));
   var alTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.al; }));
   var mcTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.mc; }));
   var csTot = sumNN(filtered.map(function(u){ var e=getEffectiveRates(u); return e.cs; }));
+  var occCount = filtered.filter(function(u){ return u.occupied === 1; }).length;
+  var tierPctMap = {base:0, p5:5, p10:10, p15:15, m5:-5, m10:-10};
+  var tierVals = filtered.map(function(u) {
+    var s = selections[sk(u.unit, u.care)] || {};
+    var tk = s.tier || tierForWtd(u.wtdAvg);
+    return tierPctMap.hasOwnProperty(tk) ? tierPctMap[tk] : null;
+  }).filter(function(v){ return v !== null; });
+  var avgTierPct = tierVals.length ? Math.round(tierVals.reduce(function(a,b){return a+b;},0) / tierVals.length) : null;
+  var avgTierStr = avgTierPct !== null ? (avgTierPct >= 0 ? "+" : "") + avgTierPct + "%" : "\u2014";
 
   html += "<tr style=\"background:var(--surface2);font-weight:600;border-top:2px solid var(--border)\">"
-        + "<td colspan=\"9\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
-        + "<td class=\"pc" + (bTot  !== null ? "" : " nil") + "\">" + fmt(bTot)  + "</td>"
+        + "<td colspan=\"6\" style=\"font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);padding:10px 12px\">Totals (" + filtered.length + " units shown)</td>"
+        + "<td style=\"text-align:center;font-size:12px;color:var(--text-secondary)\">" + occCount + " / " + filtered.length + "</td>"
         + "<td></td>"
+        + "<td class=\"pc" + (ipTot !== null ? "" : " nil") + "\" style=\"font-family:DM Mono,monospace;text-align:right\">" + fmt(ipTot) + "</td>"
+        + "<td class=\"pc" + (bTot  !== null ? "" : " nil") + "\">" + fmt(bTot)  + "</td>"
+        + "<td style=\"text-align:center;font-size:12px;color:var(--text-secondary)\">" + avgTierStr + "</td>"
         + "<td class=\"pc il" + (ilTot !== null ? "" : " nil") + "\">" + fmt(ilTot) + "</td>"
         + "<td class=\"pc al" + (alTot !== null ? "" : " nil") + "\">" + fmt(alTot) + "</td>"
         + "<td class=\"pc mc" + (mcTot !== null ? "" : " nil") + "\">" + fmt(mcTot) + "</td>"
