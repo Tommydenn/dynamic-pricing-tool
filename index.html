@@ -995,6 +995,7 @@ async function loadPricingLog() {
     var driveId = await getSpDrive(token);
 
     // List community folders inside Current Rates/ — one API call
+    // Step 1: list community folders under Current Rates/
     var listUrl = "https://graph.microsoft.com/v1.0/drives/" + driveId
                 + "/root:" + SP_FOLDER_PATH + "/Current Rates:/children";
     var resp = await fetch(listUrl, { headers: { Authorization: "Bearer " + token } });
@@ -1002,13 +1003,26 @@ async function loadPricingLog() {
     pricingLog = {};
     if (resp.ok) {
       var data = await resp.json();
-      (data.value || []).forEach(function(item) {
-        if (item.folder && item.createdDateTime) {
-          // Folder name matches the community name (special chars replaced with _,
-          // but GLM community names have no special chars so they match exactly)
-          pricingLog[item.name] = { timestamp: item.createdDateTime };
-        }
-      });
+      var folders = (data.value || []).filter(function(item) { return item.folder; });
+
+      // Step 2: peek inside each community folder to get the file's createdDateTime.
+      // All requests fired in parallel for speed.
+      await Promise.all(folders.map(async function(folder) {
+        try {
+          var filesUrl = "https://graph.microsoft.com/v1.0/drives/" + driveId
+                       + "/items/" + folder.id + "/children";
+          var fResp = await fetch(filesUrl, { headers: { Authorization: "Bearer " + token } });
+          if (!fResp.ok) return;
+          var fData = await fResp.json();
+          var files = (fData.value || []).filter(function(f) { return f.file; });
+          if (!files.length) return;
+          // Pick the most recently created file (xlsx or pdf — both stamped at publish time)
+          files.sort(function(a, b) {
+            return new Date(b.createdDateTime) - new Date(a.createdDateTime);
+          });
+          pricingLog[folder.name] = { timestamp: files[0].createdDateTime };
+        } catch(e) { /* non-fatal — community just won't appear */ }
+      }));
     } else if (resp.status !== 404) {
       throw new Error("SharePoint returned " + resp.status);
     }
