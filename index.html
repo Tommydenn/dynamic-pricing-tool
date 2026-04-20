@@ -123,6 +123,10 @@ tbody td{padding:9px 12px;vertical-align:middle}
 .batch-tier-btn{font-size:12px!important;padding:5px 14px!important;min-width:0!important;border-radius:8px!important;font-weight:600!important;letter-spacing:.02em;transition:all .15s}
 .batch-tier-btn:hover{background:var(--accent)!important;color:#fff!important;border-color:var(--accent)!important;transform:translateY(-1px);box-shadow:0 2px 6px rgba(26,106,154,.25)}
 #batch-bar{transition:all .2s ease;box-shadow:0 1px 4px rgba(26,106,154,.08)}
+.status-never{background:#FBF0F5;color:#7a2555;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;white-space:nowrap}
+.status-recent{background:#EAF2EC;color:#2D5A3D;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;white-space:nowrap}
+.status-stale{background:#FDF3EC;color:#8B4513;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;white-space:nowrap}
+.status-outdated{background:#FBF0F5;color:#8B2E22;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -132,6 +136,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
   <div class="nav-label">Workflow</div>
   <button class="nav-item active" onclick="goTo('rates')" id="nav-rates"><span class="nav-step">1</span> Select &amp; set rates</button>
   <button class="nav-item" onclick="goTo('print')" id="nav-print"><span class="nav-step">2</span> Finalize &amp; Send</button>
+  <button class="nav-item" onclick="goTo('status')" id="nav-status"><span class="nav-step" style="font-size:9px">&#9783;</span> Pricing status</button>
   <div class="sidebar-legend">
     <div class="legend-title">Wtd. avg &rarr; default tier</div>
     <div class="legend-item"><span class="legend-dot" style="background:#c07090"></span> &lt;90% &rarr; Base</div>
@@ -334,6 +339,44 @@ tbody td{padding:9px 12px;vertical-align:middle}
     </div>
 
   </div>
+
+  <!-- PAGE 3: PRICING STATUS -->
+  <div class="page" id="page-status">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Pricing Status</h1>
+        <p class="page-desc">See when rates were last published for each community. Data is read from SharePoint.</p>
+      </div>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn btn-primary btn-sm" id="load-status-btn" onclick="loadPricingLog()">&#128260; Load from SharePoint</button>
+      </div>
+    </div>
+    <div id="status-loading" style="display:none" class="empty-state">
+      <span class="empty-state-icon">&#9203;</span>
+      <div class="empty-state-title">Loading&hellip;</div>
+      <div class="empty-state-sub">Fetching publish history from SharePoint.</div>
+    </div>
+    <div id="status-empty" class="empty-state">
+      <span class="empty-state-icon">&#128203;</span>
+      <div class="empty-state-title">No status loaded</div>
+      <div class="empty-state-sub">Click &ldquo;Load from SharePoint&rdquo; above to see when each community&rsquo;s rates were last published. You&rsquo;ll be prompted to sign in with your Microsoft account.</div>
+    </div>
+    <div id="status-content" style="display:none">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th style="min-width:220px">Community</th>
+            <th>Last Published</th>
+            <th>Days Ago</th>
+            <th>Status</th>
+          </tr></thead>
+          <tbody id="status-tbody"></tbody>
+        </table>
+      </div>
+      <div id="status-footer" style="font-size:11px;color:var(--text-tertiary);margin-top:10px;font-family:'DM Mono',monospace;text-align:right"></div>
+    </div>
+  </div>
+
 </main>
 <script>
 
@@ -927,9 +970,137 @@ function buildPrintSheet() {
   document.getElementById("print-tbody").innerHTML = html;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PRICING STATUS — per-community last-published log (pricing-log.json in SP)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var pricingLog = null; // { "Community Name": { timestamp, date }, … }
+
+// Read pricing-log.json from SharePoint and render the status table.
+async function loadPricingLog() {
+  var btn = document.getElementById("load-status-btn");
+  var emptyEl  = document.getElementById("status-empty");
+  var loadingEl = document.getElementById("status-loading");
+  var contentEl = document.getElementById("status-content");
+
+  btn.disabled = true;
+  btn.innerHTML = "&#9203; Loading\u2026";
+  emptyEl.style.display = "none";
+  loadingEl.style.display = "block";
+  contentEl.style.display = "none";
+
+  try {
+    var token   = await getMsToken();
+    var driveId = await getSpDrive(token);
+    var logUrl  = "https://graph.microsoft.com/v1.0/drives/" + driveId
+                + "/root:" + SP_FOLDER_PATH + "/pricing-log.json:/content";
+
+    var resp = await fetch(logUrl, { headers: { Authorization: "Bearer " + token } });
+    if (resp.ok) {
+      pricingLog = await resp.json();
+    } else if (resp.status === 404) {
+      pricingLog = {};  // File doesn't exist yet — all communities are "Never Published"
+    } else {
+      throw new Error("SharePoint returned " + resp.status);
+    }
+
+    renderStatusTable();
+    loadingEl.style.display = "none";
+    contentEl.style.display = "block";
+    btn.innerHTML = "&#128260; Refresh";
+  } catch(e) {
+    loadingEl.style.display = "none";
+    emptyEl.style.display = "block";
+    emptyEl.querySelector(".empty-state-title").textContent = "Load failed";
+    emptyEl.querySelector(".empty-state-sub").textContent = "Could not load status: " + e.message;
+    btn.innerHTML = "&#128260; Retry";
+    console.error("[PricingLog] Load error:", e);
+  }
+  btn.disabled = false;
+}
+
+// Render community rows into the status table from in-memory pricingLog.
+function renderStatusTable() {
+  var allComms = getAllCommunities();
+  if (!allComms.length) return;
+  var log  = pricingLog || {};
+  var now  = new Date();
+  var rows = allComms.map(function(name) {
+    var entry = log[name];
+    var dateCell   = "<span style='color:var(--text-tertiary)'>&mdash;</span>";
+    var daysCell   = "<span style='color:var(--text-tertiary)'>&mdash;</span>";
+    var statusBadge = '<span class="status-never">Never published</span>';
+
+    if (entry && entry.timestamp) {
+      var d    = new Date(entry.timestamp);
+      dateCell = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      var days = Math.floor((now - d) / 86400000);
+      daysCell = days === 0 ? "Today" : days === 1 ? "1 day" : days + " days";
+      if (days <= 7) {
+        statusBadge = '<span class="status-recent">&#10003; Current</span>';
+      } else if (days <= 30) {
+        statusBadge = '<span class="status-stale">&#9888; ' + days + ' days old</span>';
+      } else {
+        statusBadge = '<span class="status-outdated">&#9888; Outdated</span>';
+      }
+    }
+    return '<tr>'
+      + '<td style="font-weight:500">' + name + '</td>'
+      + '<td style="font-family:\'DM Mono\',monospace;font-size:12px">' + dateCell + '</td>'
+      + '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--text-secondary)">' + daysCell + '</td>'
+      + '<td>' + statusBadge + '</td>'
+      + '</tr>';
+  });
+  document.getElementById("status-tbody").innerHTML = rows.join("");
+  var footerEl = document.getElementById("status-footer");
+  if (footerEl) {
+    footerEl.textContent = "Last loaded: "
+      + now.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  }
+}
+
+// Write/update the pricing-log.json entry for one community after a successful publish.
+// Non-fatal: errors are logged but do not block the publish flow.
+async function updatePricingLog(token, driveId, community) {
+  try {
+    var logPath = SP_FOLDER_PATH + "/pricing-log.json";
+    var logUrl  = "https://graph.microsoft.com/v1.0/drives/" + driveId
+                + "/root:" + logPath + ":/content";
+
+    // Read existing log (create empty object if 404)
+    var existing = {};
+    var readResp = await fetch(logUrl, { headers: { Authorization: "Bearer " + token } });
+    if (readResp.ok) {
+      try { existing = await readResp.json(); } catch(e) { existing = {}; }
+    }
+
+    // Stamp this community
+    var now = new Date();
+    existing[community] = {
+      timestamp: now.toISOString(),
+      date: now.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+    };
+
+    // Write back
+    var jsonBlob = new Blob([JSON.stringify(existing, null, 2)], { type: "application/json" });
+    await fetch(logUrl, {
+      method: "PUT",
+      headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+      body: jsonBlob
+    });
+
+    // Keep in-memory cache in sync so the status page refreshes immediately
+    pricingLog = existing;
+    console.log("[PricingLog] Stamped " + community + " at " + now.toISOString());
+  } catch(e) {
+    // Non-fatal — publish succeeded, log update is best-effort
+    console.error("[PricingLog] Update failed (non-fatal):", e);
+  }
+}
+
 function goTo(page) {
   document.querySelectorAll(".page").forEach(function(p) { p.classList.remove("active"); });
-  ["rates","print"].forEach(function(p) {
+  ["rates","print","status"].forEach(function(p) {
     document.getElementById("nav-" + p).classList.toggle("active", p === page);
   });
   document.getElementById("page-" + page).classList.add("active");
@@ -1652,6 +1823,10 @@ async function runPublish() {
         await uploadFileToSP(spResult.token, spResult.driveId, spResult.currentFolder, pdfName, pdfBlob, "application/pdf");
         setSpStatus("success", "\u2713 Uploaded: " + spResult.filename + " + PDF");
       } catch(pe) { console.error("PDF upload error:", pe); }
+    }
+    // Stamp the pricing-log.json so the Status page stays up to date
+    if (spResult) {
+      await updatePricingLog(spResult.token, spResult.driveId, currentCommunity);
     }
   } catch(pdfErr) { console.error("PDF generation error:", pdfErr); }
 
