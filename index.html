@@ -1296,99 +1296,69 @@ async function generatePdf() {
   if (feeText.length) doc.text(feeText.join("  \u00B7  "), pw - 40, 58, { align: "right" });
 
   doc.setDrawColor(26, 24, 22);
-  doc.setLineWidth(1.5);
-  doc.line(40, 74, pw - 40, 74);
-
-  // ── Tier legend ──
-  doc.setFontSize(7);
-  doc.setTextColor(160, 157, 152);
-  doc.text("TIERS:", 44, 88);
-  var dots = [
-    { c: [192, 112, 144], l: "Base" }, { c: [192, 120, 48], l: "+5%" },
-    { c: [26, 106, 154], l: "+10%" }, { c: [45, 90, 61], l: "+15%" },
-    { c: [184, 66, 51], l: "-5%" }, { c: [139, 46, 34], l: "-10%" }
-  ];
-  var dx = 80;
-  dots.forEach(function(d) {
-    doc.setFillColor(d.c[0], d.c[1], d.c[2]);
-    doc.circle(dx, 85, 3, "F");
-    doc.setTextColor(107, 103, 96);
-    doc.text(d.l, dx + 6, 88);
-    dx += 40;
-  });
+  doc.setLineWidth(1);
+  doc.line(40, 70, pw - 40, 70);
 
   // ── Table data ──
+  // Columns match the app exactly:
+  // UNIT | CARE | TYPE | FLOORPLAN | SQ FT | OCC | WTD% | IN-PLACE | BASE RATE | TIER | IL RATE | AL RATE | MC RATE | CS RATE
   var sorted = units.slice().sort(function(a, b) {
     return a.unit.localeCompare(b.unit, undefined, { numeric: true });
   });
 
-  var head = [["UNIT", "CARE", "TYPE", "FLOORPLAN", "SQ FT", "WTD%", "BASE RATE", "TIER", "IL RATE", "AL RATE", "MC RATE", "CS RATE"]];
-  var pdfWarnRows = {};
-  var body = sorted.map(function(u, idx) {
-    var sel = selections[sk(u.unit, u.care)] || {};
-    var eff = getEffectiveRates(u, sel);
-    var t = eff.tierObj;
+  var head = [["UNIT","CARE","TYPE","FLOORPLAN","SQ FT","OCC","WTD%","IN-PLACE","BASE RATE","TIER","IL RATE","AL RATE","MC RATE","CS RATE"]];
+  var body = sorted.map(function(u) {
+    var sel   = selections[sk(u.unit, u.care)] || {};
+    var eff   = getEffectiveRates(u, sel);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-    var tierLabel = eff.tier === "custom" ? (sel.customRate != null ? "Custom $" + sel.customRate.toLocaleString() : "Custom") : t.label;
-    var tk = eff.tier;
-    if (tk === "m5" || tk === "m10" || (tk === "custom" && sel.customRate != null && pBase !== null && Number(sel.customRate) < pBase)) {
-      pdfWarnRows[idx] = true;
-    }
+    var tierLabel = eff.tier === "custom" ? (sel.customRate != null ? "Custom $" + sel.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
     return [
-      u.unit, u.care, u.type, u.floorplan || "",
+      u.unit,
+      u.care,
+      u.type,
+      u.floorplan || "",
       u.sqft ? Math.round(u.sqft).toString() : "",
+      u.occupied === 1 ? "Occ" : "Vac",
       u.wtdAvg !== null ? Math.round(u.wtdAvg * 100) + "%" : "",
-      fmtM(pBase), tierLabel,
+      (u.inPlaceTotal != null && u.inPlaceTotal > 0) ? fmtM(u.inPlaceTotal) : "\u2014",
+      fmtM(pBase),
+      tierLabel,
       fmtM(eff.il), fmtM(eff.al), fmtM(eff.mc), fmtM(eff.cs)
     ];
   });
 
-  var ilColor = [24, 95, 165]; var alColor = [139, 69, 19]; var mcColor = [107, 58, 138]; var csColor = [122, 74, 0];
-
+  // Clean financial table — no row or column color differentiation
   doc.autoTable({
     head: head,
     body: body,
-    startY: 96,
+    startY: 80,
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 8, cellPadding: 4, font: "helvetica", textColor: [26, 24, 22], lineColor: [216, 212, 204], lineWidth: 0.5 },
-    headStyles: { fillColor: [240, 237, 230], textColor: [107, 103, 96], fontStyle: "bold", fontSize: 7, halign: "center" },
-    columnStyles: {
-      0: { halign: "center", fontStyle: "bold", cellWidth: 45 },
-      1: { halign: "center", cellWidth: 38 },
-      2: { cellWidth: 62 },
-      3: { cellWidth: 120 },
-      4: { halign: "center", cellWidth: 42 },
-      5: { halign: "center", cellWidth: 42 },
-      6: { halign: "center", fontStyle: "bold", cellWidth: 62 },
-      7: { halign: "center", fontStyle: "bold", cellWidth: 42 },
-      8: { halign: "center", fontStyle: "bold", cellWidth: 60 },
-      9: { halign: "center", fontStyle: "bold", cellWidth: 60 },
-      10: { halign: "center", fontStyle: "bold", cellWidth: 60 },
-      11: { halign: "center", fontStyle: "bold", cellWidth: 60 }
+    styles: {
+      fontSize: 7.5, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 },
+      font: "helvetica", textColor: [26, 24, 22],
+      lineColor: [200, 212, 216], lineWidth: 0.4,
+      fillColor: [255, 255, 255]
     },
-    didParseCell: function(data) {
-      if (data.section !== "body") {
-        if (data.column.index === 8) data.cell.styles.textColor = ilColor;
-        if (data.column.index === 9) data.cell.styles.textColor = alColor;
-        if (data.column.index === 10) data.cell.styles.textColor = mcColor;
-        if (data.column.index === 11) data.cell.styles.textColor = csColor;
-        return;
-      }
-      var care = data.row.raw[1];
-      if (pdfWarnRows[data.row.index]) {
-        data.cell.styles.fillColor = data.row.index % 2 === 0 ? [253, 226, 222] : [248, 214, 209];
-      } else if (care === "MC") data.cell.styles.fillColor = data.row.index % 2 === 0 ? [253, 251, 255] : [247, 242, 252];
-      else if (care === "CS") data.cell.styles.fillColor = data.row.index % 2 === 0 ? [255, 253, 246] : [253, 247, 232];
-      else data.cell.styles.fillColor = data.row.index % 2 === 0 ? [255, 255, 255] : [250, 250, 248];
-      if (data.column.index === 1) {
-        if (care === "IL") data.cell.styles.textColor = ilColor;
-        if (care === "MC") data.cell.styles.textColor = mcColor;
-        if (care === "CS") data.cell.styles.textColor = csColor;
-      }
-      if (data.column.index === 8) data.cell.styles.textColor = ilColor;
-      if (data.column.index === 9) data.cell.styles.textColor = alColor;
-      if (data.column.index === 10) data.cell.styles.textColor = mcColor;
-      if (data.column.index === 11) data.cell.styles.textColor = csColor;
+    headStyles: {
+      fillColor: [0, 60, 76], textColor: [255, 255, 255],
+      fontStyle: "bold", fontSize: 7, halign: "center"
+    },
+    alternateRowStyles: { fillColor: [255, 255, 255] }, // disable alternating
+    columnStyles: {
+      0:  { halign: "center", fontStyle: "bold", cellWidth: 44 }, // UNIT
+      1:  { halign: "center", cellWidth: 30 },                    // CARE
+      2:  { halign: "left",   cellWidth: 54 },                    // TYPE
+      3:  { halign: "left",   cellWidth: 78 },                    // FLOORPLAN
+      4:  { halign: "center", cellWidth: 34 },                    // SQ FT
+      5:  { halign: "center", cellWidth: 30 },                    // OCC
+      6:  { halign: "center", cellWidth: 36 },                    // WTD%
+      7:  { halign: "right",  fontStyle: "bold", cellWidth: 54 }, // IN-PLACE
+      8:  { halign: "right",  fontStyle: "bold", cellWidth: 54 }, // BASE RATE
+      9:  { halign: "center", cellWidth: 40 },                    // TIER
+      10: { halign: "right",  fontStyle: "bold", cellWidth: 54 }, // IL RATE
+      11: { halign: "right",  fontStyle: "bold", cellWidth: 54 }, // AL RATE
+      12: { halign: "right",  fontStyle: "bold", cellWidth: 54 }, // MC RATE
+      13: { halign: "right",  fontStyle: "bold", cellWidth: 54 }  // CS RATE
     },
     didDrawPage: function(data) {
       doc.setFontSize(7);
@@ -1495,58 +1465,31 @@ function buildXlsx() {
   var now = new Date();
   var dateStr = now.toLocaleDateString("en-US", {month:"long", day:"numeric", year:"numeric"});
 
-  // ── Palette ──
-  var darkBg   = "003C4C";
-  var accentBg = "007098";
-  var lightBg  = "F5F7F8";
-  var ilBg     = "185FA5";
-  var alBg     = "8B4513";
-  var mcBg     = "6B3A8A";
-  var csBg     = "7A4A00";
-  var warnBg   = "F5B8B0";
-  var borderClr = "D0D8DC";
-  var white = "FFFFFF";
+  // ── Palette — clean financial, no row/column color differentiation ──
+  var darkBg    = "003C4C";
+  var borderClr = "C8D4D8";
+  var white     = "FFFFFF";
   var thinBorder = {style:"thin", color:{rgb:borderClr}};
   var allBorders = {top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder};
 
-  // ── Helper: build a full set of 4 cell styles for a given row background ──
-  function rs(bg) {
-    var f = {name:"Calibri",sz:10,color:{rgb:"1A1816"}};
-    var fill = bg ? {fgColor:{rgb:bg}} : undefined;
-    var base = {font:f, border:allBorders};
-    if (fill) base.fill = fill;
-    return {
-      text:   Object.assign({}, base, {alignment:{vertical:"center"}}),
-      center: Object.assign({}, base, {alignment:{horizontal:"center",vertical:"center"}}),
-      money:  Object.assign({}, base, {alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"}),
-      pct:    Object.assign({}, base, {alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"})
-    };
-  }
+  // Title / subtitle
+  var titleStyle    = {font:{name:"Calibri",sz:16,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
+  var subtitleStyle = {font:{name:"Calibri",sz:10,color:{rgb:"B0C4CC"}},        fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
 
-  // Normal rows (IL/AL/Flex): white / lightBg alternating
-  var S  = rs(null);       // odd rows (white)
-  var SA = rs(lightBg);    // even rows (light gray)
-  // MC rows: light purple
-  var SM  = rs("FDFBFF");
-  var SMA = rs("F5F0FB");
-  // CS rows: light gold
-  var SC  = rs("FFFDF6");
-  var SCA = rs("FDF4E3");
-  // Warn rows (discount tiers)
-  var SW  = rs(warnBg);
+  // One consistent header style — all columns the same
+  var hdr      = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var hdrLeft  = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",  vertical:"center",wrapText:true}, border:allBorders};
 
-  // Title / subtitle / header / totals styles
-  var titleStyle      = {font:{name:"Calibri",sz:16,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:darkBg}},   alignment:{horizontal:"left",vertical:"center"}};
-  var subtitleStyle   = {font:{name:"Calibri",sz:10,color:{rgb:"B0C4CC"}},          fill:{fgColor:{rgb:darkBg}},   alignment:{horizontal:"left",vertical:"center"}};
-  var hdr             = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var hdrLeft         = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"left",  vertical:"center",wrapText:true}, border:allBorders};
-  var hdrIL           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:ilBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var hdrAL           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:alBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var hdrMC           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:mcBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var hdrCS           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:csBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var totalLabelStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"left",  vertical:"center"}};
-  var totalMoneyStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"right", vertical:"center"}, numFmt:"$#,##0"};
-  var totalCenterStyle= {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  // Clean white data cells — no row or column tinting
+  var cellText   = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{vertical:"center"}};
+  var cellCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
+  var cellMoney  = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"right", vertical:"center"}, numFmt:"$#,##0"};
+  var cellPct    = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
+
+  // Totals row: subtle gray band — standard financial convention for summary rows
+  var totalLabelStyle  = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E8ECEE"}}, border:allBorders, alignment:{horizontal:"left",  vertical:"center"}};
+  var totalMoneyStyle  = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E8ECEE"}}, border:allBorders, alignment:{horizontal:"right", vertical:"center"}, numFmt:"$#,##0"};
+  var totalCenterStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E8ECEE"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
 
   // ── Build rows ──
   var aoa = [];
@@ -1566,18 +1509,11 @@ function buildXlsx() {
   aoa.push(["Community","Unit","Care","Type","Floorplan","Sq Ft","Occ","Wtd Avg","In-Place Rent","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]);
 
   // Data rows
-  var xlWarnRows = {};
-  var xlCareRows = []; // track care per data row for tinting
   sorted.forEach(function(u, idx) {
     var s   = selections[sk(u.unit,u.care)] || {};
     var eff = getEffectiveRates(u, s);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
     var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom $"+s.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
-    var tk = eff.tier;
-    if (tk==="m5"||tk==="m10"||(tk==="custom"&&s.customRate!=null&&pBase!==null&&Number(s.customRate)<pBase)) {
-      xlWarnRows[idx] = true;
-    }
-    xlCareRows[idx] = u.care;
     aoa.push([
       currentCommunity,                          // 0
       u.unit,                                    // 1
@@ -1651,39 +1587,29 @@ function buildXlsx() {
     cr=XLSX.utils.encode_cell({r:1,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"}; ws[cr].s=subtitleStyle;
   }
 
-  // ── Header row (row 3) ──
-  var hdrStyles = [hdrLeft,hdrLeft,hdr,hdrLeft,hdrLeft,hdr,hdr,hdr,hdr,hdr,hdr,hdrIL,hdrAL,hdrMC,hdrCS];
+  // ── Header row (row 3) — left-align Community/Unit/Floorplan, center everything else ──
   for(var c=0;c<NCOLS;c++){
-    var cr=XLSX.utils.encode_cell({r:3,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"}; ws[cr].s=hdrStyles[c];
+    var cr=XLSX.utils.encode_cell({r:3,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"};
+    ws[cr].s = (c===0||c===1||c===4) ? hdrLeft : hdr;
   }
 
-  // ── Data rows ──
+  // ── Data rows — clean white, no color differentiation ──
   var dataStart = 4;
   var dataEnd   = dataStart + sorted.length;
   for(var r=dataStart;r<dataEnd;r++){
-    var idx    = r - dataStart;
-    var isAlt  = idx % 2 === 1;
-    var isWarn = xlWarnRows[idx];
-    var care   = xlCareRows[idx];
-    // Pick the correct style set for this row
-    var st = isWarn ? SW
-           : (care==="MC" ? (isAlt?SMA:SM)
-           : (care==="CS" ? (isAlt?SCA:SC)
-           : (isAlt?SA:S)));
     for(var c=0;c<NCOLS;c++){
       var cr = XLSX.utils.encode_cell({r:r,c:c});
       if(!ws[cr]) ws[cr]={v:"",t:"s"};
-      // Apply type-appropriate style + coerce numeric cells
-      if(c===7){ // Wtd Avg — percent
-        ws[cr].s = st.pct;
+      if(c===7){                                        // Wtd Avg — percent
+        ws[cr].s = cellPct;
         if(ws[cr].v!==""&&typeof ws[cr].v==="number") ws[cr].t="n";
-      } else if(c===8||c===9||c===11||c===12||c===13||c===14){ // money columns
-        ws[cr].s = st.money;
+      } else if(c===8||c===9||c===11||c===12||c===13||c===14){ // money
+        ws[cr].s = cellMoney;
         if(ws[cr].v!=="") ws[cr].t="n";
-      } else if(c===2||c===5||c===6||c===10){ // center columns
-        ws[cr].s = st.center;
+      } else if(c===2||c===5||c===6||c===10){           // center text
+        ws[cr].s = cellCenter;
       } else {
-        ws[cr].s = st.text;
+        ws[cr].s = cellText;
       }
     }
   }
