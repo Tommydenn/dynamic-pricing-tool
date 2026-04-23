@@ -1482,6 +1482,12 @@ async function uploadFileToSP(token, driveId, folderPath, filename, blob, conten
 }
 
 function buildXlsx() {
+  // Column layout (matches the app table exactly):
+  // 0:Community  1:Unit  2:Care  3:Type  4:Floorplan  5:Sq Ft  6:Occ
+  // 7:Wtd Avg  8:In-Place Rent  9:Base Rate  10:Tier
+  // 11:IL Rate  12:AL Rate  13:MC Rate  14:CS Rate
+  var NCOLS = 15;
+
   var sorted = units.slice().sort(function(a,b){
     return a.unit.localeCompare(b.unit, undefined, {numeric:true});
   });
@@ -1489,142 +1495,205 @@ function buildXlsx() {
   var now = new Date();
   var dateStr = now.toLocaleDateString("en-US", {month:"long", day:"numeric", year:"numeric"});
 
-  // ── Styles ──
-  var darkBg = "003C4C";
+  // ── Palette ──
+  var darkBg   = "003C4C";
   var accentBg = "007098";
-  var lightBg = "F5F7F8";
+  var lightBg  = "F5F7F8";
+  var ilBg     = "185FA5";
+  var alBg     = "8B4513";
+  var mcBg     = "6B3A8A";
+  var csBg     = "7A4A00";
+  var warnBg   = "F5B8B0";
   var borderClr = "D0D8DC";
   var white = "FFFFFF";
   var thinBorder = {style:"thin", color:{rgb:borderClr}};
   var allBorders = {top:thinBorder, bottom:thinBorder, left:thinBorder, right:thinBorder};
 
-  var titleStyle = {font:{name:"Calibri",sz:16,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
-  var subtitleStyle = {font:{name:"Calibri",sz:10,color:{rgb:"B0C4CC"}}, fill:{fgColor:{rgb:darkBg}}, alignment:{horizontal:"left",vertical:"center"}};
-  var headerStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
-  var headerLeftStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}}, fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"left",vertical:"center",wrapText:true}, border:allBorders};
-  var cellStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{vertical:"center"}};
-  var cellCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
-  var cellMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
-  var cellPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
-  var altStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{vertical:"center"}};
-  var altCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
-  var altMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
-  var altPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:lightBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
-  var totalLabelStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"left",vertical:"center"}};
-  var totalMoneyStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
-  var totalCenterStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
-  var feeStyle = {font:{name:"Calibri",sz:9,italic:true,color:{rgb:"4A6670"}}, alignment:{horizontal:"left",vertical:"center"}};
-  var warnBg = "F5B8B0";
-  var warnStyle = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{vertical:"center"}};
-  var warnCenter = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
-  var warnMoney = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"};
-  var warnPct = {font:{name:"Calibri",sz:10,color:{rgb:"1A1816"}}, fill:{fgColor:{rgb:warnBg}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"};
+  // ── Helper: build a full set of 4 cell styles for a given row background ──
+  function rs(bg) {
+    var f = {name:"Calibri",sz:10,color:{rgb:"1A1816"}};
+    var fill = bg ? {fgColor:{rgb:bg}} : undefined;
+    var base = {font:f, border:allBorders};
+    if (fill) base.fill = fill;
+    return {
+      text:   Object.assign({}, base, {alignment:{vertical:"center"}}),
+      center: Object.assign({}, base, {alignment:{horizontal:"center",vertical:"center"}}),
+      money:  Object.assign({}, base, {alignment:{horizontal:"right",vertical:"center"}, numFmt:"$#,##0"}),
+      pct:    Object.assign({}, base, {alignment:{horizontal:"center",vertical:"center"}, numFmt:"0%"})
+    };
+  }
+
+  // Normal rows (IL/AL/Flex): white / lightBg alternating
+  var S  = rs(null);       // odd rows (white)
+  var SA = rs(lightBg);    // even rows (light gray)
+  // MC rows: light purple
+  var SM  = rs("FDFBFF");
+  var SMA = rs("F5F0FB");
+  // CS rows: light gold
+  var SC  = rs("FFFDF6");
+  var SCA = rs("FDF4E3");
+  // Warn rows (discount tiers)
+  var SW  = rs(warnBg);
+
+  // Title / subtitle / header / totals styles
+  var titleStyle      = {font:{name:"Calibri",sz:16,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:darkBg}},   alignment:{horizontal:"left",vertical:"center"}};
+  var subtitleStyle   = {font:{name:"Calibri",sz:10,color:{rgb:"B0C4CC"}},          fill:{fgColor:{rgb:darkBg}},   alignment:{horizontal:"left",vertical:"center"}};
+  var hdr             = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var hdrLeft         = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:accentBg}}, alignment:{horizontal:"left",  vertical:"center",wrapText:true}, border:allBorders};
+  var hdrIL           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:ilBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var hdrAL           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:alBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var hdrMC           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:mcBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var hdrCS           = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:white}},  fill:{fgColor:{rgb:csBg}},     alignment:{horizontal:"center",vertical:"center",wrapText:true}, border:allBorders};
+  var totalLabelStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"left",  vertical:"center"}};
+  var totalMoneyStyle = {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"right", vertical:"center"}, numFmt:"$#,##0"};
+  var totalCenterStyle= {font:{name:"Calibri",sz:10,bold:true,color:{rgb:darkBg}}, fill:{fgColor:{rgb:"E0E7EA"}}, border:allBorders, alignment:{horizontal:"center",vertical:"center"}};
 
   // ── Build rows ──
   var aoa = [];
+  var blank = Array(NCOLS).fill("");
+
   // Row 0: Title
-  aoa.push([currentCommunity,"","","","","","","","","","","",""]);
-  // Row 1: Subtitle with date + fees
+  aoa.push([currentCommunity].concat(Array(NCOLS-1).fill("")));
+  // Row 1: Subtitle
   var feeText = "Generated " + dateStr;
   if (fees.al) feeText += "  |  AL Fee: $" + fees.al.toLocaleString();
   if (fees.mc) feeText += "  |  MC Fee: $" + fees.mc.toLocaleString();
   if (fees.cs) feeText += "  |  CS Fee: $" + fees.cs.toLocaleString();
-  aoa.push([feeText,"","","","","","","","","","","",""]);
+  aoa.push([feeText].concat(Array(NCOLS-1).fill("")));
   // Row 2: blank spacer
   aoa.push([]);
   // Row 3: Header
-  aoa.push(["Community","Unit","Care","Type","Floorplan","Sq Ft","Wtd Avg","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]);
+  aoa.push(["Community","Unit","Care","Type","Floorplan","Sq Ft","Occ","Wtd Avg","In-Place Rent","Base Rate","Tier","IL Rate","AL Rate","MC Rate","CS Rate"]);
 
-  // Data rows start at row 4
+  // Data rows
   var xlWarnRows = {};
+  var xlCareRows = []; // track care per data row for tinting
   sorted.forEach(function(u, idx) {
-    var s = selections[sk(u.unit,u.care)] || {};
+    var s   = selections[sk(u.unit,u.care)] || {};
     var eff = getEffectiveRates(u, s);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-    var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom $" + s.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
+    var tierLabel = eff.tier === "custom" ? (s.customRate != null ? "Custom $"+s.customRate.toLocaleString() : "Custom") : eff.tierObj.label;
     var tk = eff.tier;
-    if (tk === "m5" || tk === "m10" || (tk === "custom" && s.customRate != null && pBase !== null && Number(s.customRate) < pBase)) {
+    if (tk==="m5"||tk==="m10"||(tk==="custom"&&s.customRate!=null&&pBase!==null&&Number(s.customRate)<pBase)) {
       xlWarnRows[idx] = true;
     }
+    xlCareRows[idx] = u.care;
     aoa.push([
-      currentCommunity, u.unit, u.care, u.type, u.floorplan||"",
-      u.sqft ? Math.round(u.sqft) : "",
-      u.wtdAvg !== null ? u.wtdAvg : "",
-      pBase !== null ? pBase : "", tierLabel,
-      eff.il !== null ? eff.il : "", eff.al !== null ? eff.al : "",
-      eff.mc !== null ? eff.mc : "", eff.cs !== null ? eff.cs : ""
+      currentCommunity,                          // 0
+      u.unit,                                    // 1
+      u.care,                                    // 2
+      u.type,                                    // 3
+      u.floorplan || "",                         // 4
+      u.sqft ? Math.round(u.sqft) : "",          // 5
+      u.occupied === 1 ? "Occ" : "Vac",         // 6
+      u.wtdAvg !== null ? u.wtdAvg : "",         // 7  pct
+      (u.inPlaceTotal != null && u.inPlaceTotal > 0) ? u.inPlaceTotal : "", // 8  money
+      pBase !== null ? pBase : "",               // 9  money
+      tierLabel,                                 // 10
+      eff.il !== null ? eff.il : "",             // 11 money
+      eff.al !== null ? eff.al : "",             // 12 money
+      eff.mc !== null ? eff.mc : "",             // 13 money
+      eff.cs !== null ? eff.cs : ""              // 14 money
     ]);
   });
 
   // Totals row
-  var totBase=0, totIL=0, totAL=0, totMC=0, totCS=0;
-  var hBase=false, hIL=false, hAL=false, hMC=false, hCS=false;
+  var totIP=0, totBase=0, totIL=0, totAL=0, totMC=0, totCS=0;
+  var hIP=false, hBase=false, hIL=false, hAL=false, hMC=false, hCS=false;
   sorted.forEach(function(u){
-    var eff = getEffectiveRates(u);
+    var eff   = getEffectiveRates(u);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
+    if(u.inPlaceTotal>0){hIP=true;totIP+=u.inPlaceTotal;}
     if(pBase!==null){hBase=true;totBase+=pBase;}
     if(eff.il!==null){hIL=true;totIL+=eff.il;}
     if(eff.al!==null){hAL=true;totAL+=eff.al;}
     if(eff.mc!==null){hMC=true;totMC+=eff.mc;}
     if(eff.cs!==null){hCS=true;totCS+=eff.cs;}
   });
-  aoa.push(["Totals ("+sorted.length+" units)","","","","","","",
-    hBase?totBase:"", "",
+  aoa.push([
+    "Totals ("+sorted.length+" units)","","","","","","","",
+    hIP?totIP:"", hBase?totBase:"", "",
     hIL?totIL:"", hAL?totAL:"", hMC?totMC:"", hCS?totCS:""
   ]);
 
   var wb = XLSX.utils.book_new();
   var ws = XLSX.utils.aoa_to_sheet(aoa);
 
-  // ── Merge title and subtitle across columns ──
+  // ── Merges ──
   ws["!merges"] = [
-    {s:{r:0,c:0},e:{r:0,c:12}},
-    {s:{r:1,c:0},e:{r:1,c:12}}
+    {s:{r:0,c:0},e:{r:0,c:NCOLS-1}},
+    {s:{r:1,c:0},e:{r:1,c:NCOLS-1}}
   ];
 
   // ── Column widths ──
-  ws["!cols"] = [{wch:22},{wch:10},{wch:7},{wch:14},{wch:18},{wch:8},{wch:10},{wch:12},{wch:10},{wch:12},{wch:12},{wch:12},{wch:12}];
-  // ── Row heights ──
+  ws["!cols"] = [
+    {wch:22}, // Community
+    {wch:10}, // Unit
+    {wch:7},  // Care
+    {wch:14}, // Type
+    {wch:18}, // Floorplan
+    {wch:8},  // Sq Ft
+    {wch:7},  // Occ
+    {wch:10}, // Wtd Avg
+    {wch:14}, // In-Place Rent
+    {wch:12}, // Base Rate
+    {wch:10}, // Tier
+    {wch:12}, // IL Rate
+    {wch:12}, // AL Rate
+    {wch:12}, // MC Rate
+    {wch:12}  // CS Rate
+  ];
   ws["!rows"] = [{hpt:30},{hpt:18},{hpt:8},{hpt:22}];
 
-  // ── Apply styles ──
-  // Title row
-  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:0,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=titleStyle;}
-  // Subtitle row
-  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:1,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=subtitleStyle;}
-  // Header row (row 3)
-  for(var c=0;c<=12;c++){var cr=XLSX.utils.encode_cell({r:3,c:c});if(!ws[cr])ws[cr]={v:"",t:"s"};ws[cr].s=(c<=1||c===3||c===4)?headerLeftStyle:headerStyle;}
+  // ── Title / subtitle ──
+  for(var c=0;c<NCOLS;c++){
+    var cr=XLSX.utils.encode_cell({r:0,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"}; ws[cr].s=titleStyle;
+    cr=XLSX.utils.encode_cell({r:1,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"}; ws[cr].s=subtitleStyle;
+  }
 
-  // Data rows
+  // ── Header row (row 3) ──
+  var hdrStyles = [hdrLeft,hdrLeft,hdr,hdrLeft,hdrLeft,hdr,hdr,hdr,hdr,hdr,hdr,hdrIL,hdrAL,hdrMC,hdrCS];
+  for(var c=0;c<NCOLS;c++){
+    var cr=XLSX.utils.encode_cell({r:3,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"}; ws[cr].s=hdrStyles[c];
+  }
+
+  // ── Data rows ──
   var dataStart = 4;
-  var dataEnd = dataStart + sorted.length;
+  var dataEnd   = dataStart + sorted.length;
   for(var r=dataStart;r<dataEnd;r++){
-    var isAlt = (r-dataStart)%2===1;
-    var isWarn = xlWarnRows[r-dataStart];
-    for(var c=0;c<=12;c++){
+    var idx    = r - dataStart;
+    var isAlt  = idx % 2 === 1;
+    var isWarn = xlWarnRows[idx];
+    var care   = xlCareRows[idx];
+    // Pick the correct style set for this row
+    var st = isWarn ? SW
+           : (care==="MC" ? (isAlt?SMA:SM)
+           : (care==="CS" ? (isAlt?SCA:SC)
+           : (isAlt?SA:S)));
+    for(var c=0;c<NCOLS;c++){
       var cr = XLSX.utils.encode_cell({r:r,c:c});
       if(!ws[cr]) ws[cr]={v:"",t:"s"};
-      if(isWarn){
-        if(c===6){ ws[cr].s = warnPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
-        else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = warnMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
-        else if(c===2||c===5||c===8){ ws[cr].s = warnCenter; }
-        else { ws[cr].s = warnStyle; }
+      // Apply type-appropriate style + coerce numeric cells
+      if(c===7){ // Wtd Avg — percent
+        ws[cr].s = st.pct;
+        if(ws[cr].v!==""&&typeof ws[cr].v==="number") ws[cr].t="n";
+      } else if(c===8||c===9||c===11||c===12||c===13||c===14){ // money columns
+        ws[cr].s = st.money;
+        if(ws[cr].v!=="") ws[cr].t="n";
+      } else if(c===2||c===5||c===6||c===10){ // center columns
+        ws[cr].s = st.center;
       } else {
-        if(c===6){ ws[cr].s = isAlt?altPct:cellPct; if(ws[cr].v!==""&&typeof ws[cr].v==="number"){ws[cr].t="n";} }
-        else if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s = isAlt?altMoney:cellMoney; if(ws[cr].v!==""){ws[cr].t="n";} }
-        else if(c===2||c===5||c===8){ ws[cr].s = isAlt?altCenter:cellCenter; }
-        else { ws[cr].s = isAlt?altStyle:cellStyle; }
+        ws[cr].s = st.text;
       }
     }
   }
 
-  // Totals row
+  // ── Totals row ──
   var tr = dataEnd;
-  for(var c=0;c<=12;c++){
-    var cr = XLSX.utils.encode_cell({r:tr,c:c});
-    if(!ws[cr]) ws[cr]={v:"",t:"s"};
-    if(c===7||c===9||c===10||c===11||c===12){ ws[cr].s=totalMoneyStyle; if(ws[cr].v!==""){ws[cr].t="n";} }
-    else { ws[cr].s = c===0?totalLabelStyle:totalCenterStyle; }
+  for(var c=0;c<NCOLS;c++){
+    var cr=XLSX.utils.encode_cell({r:tr,c:c}); if(!ws[cr])ws[cr]={v:"",t:"s"};
+    if(c===8||c===9||c===11||c===12||c===13||c===14){ ws[cr].s=totalMoneyStyle; if(ws[cr].v!=="")ws[cr].t="n"; }
+    else { ws[cr].s = c===0 ? totalLabelStyle : totalCenterStyle; }
   }
 
   XLSX.utils.book_append_sheet(wb, ws, currentCommunity.substring(0,31));
