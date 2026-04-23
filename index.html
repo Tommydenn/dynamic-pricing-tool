@@ -941,7 +941,7 @@ function buildPrintSheet() {
           + "<td>" + u.type + "</td>"
           + "<td>" + (u.floorplan || "\u2014") + "</td>"
           + "<td class=\"mono\">" + (u.sqft ? Math.round(u.sqft).toLocaleString() : "\u2014") + "</td>"
-          + "<td class=\"mono\">" + fmt(u.inPlaceTotal) + "</td>"
+          + "<td class=\"mono\">" + fmt(u.inPlaceRent) + "</td>"
           + "<td class=\"mono\">" + pct + "</td>"
           + "<td class=\"" + (pb !== null ? bc2+"p" : "mono") + "\" style=\"font-weight:600\">" + fmt(pb) + "</td>"
           + "<td><span style=\"" + bsty + "\">" + tierLabel + (isOv ? " \u2605" : "") + "</span></td>"
@@ -1320,7 +1320,7 @@ async function generatePdf() {
       u.sqft ? Math.round(u.sqft).toString() : "",
       u.occupied === 1 ? "Occ" : "Vac",
       u.wtdAvg !== null ? Math.round(u.wtdAvg * 100) + "%" : "",
-      (u.inPlaceTotal != null && u.inPlaceTotal > 0) ? fmtM(u.inPlaceTotal) : "\u2014",
+      (u.inPlaceRent != null && u.inPlaceRent > 0) ? fmtM(u.inPlaceRent) : "\u2014",
       fmtM(pBase),
       tierLabel,
       fmtM(eff.il), fmtM(eff.al), fmtM(eff.mc), fmtM(eff.cs)
@@ -1523,7 +1523,7 @@ function buildXlsx() {
       u.sqft ? Math.round(u.sqft) : "",          // 5
       u.occupied === 1 ? "Occ" : "Vac",         // 6
       u.wtdAvg !== null ? u.wtdAvg : "",         // 7  pct
-      (u.inPlaceTotal != null && u.inPlaceTotal > 0) ? u.inPlaceTotal : "", // 8  money
+      (u.inPlaceRent != null && u.inPlaceRent > 0) ? u.inPlaceRent : "", // 8  money
       pBase !== null ? pBase : "",               // 9  money
       tierLabel,                                 // 10
       eff.il !== null ? eff.il : "",             // 11 money
@@ -1539,7 +1539,7 @@ function buildXlsx() {
   sorted.forEach(function(u){
     var eff   = getEffectiveRates(u);
     var pBase = (u.care==="IL"||u.care==="AL"||u.care==="Flex")?u.ilBase:u.care==="MC"?u.mcBase:u.care==="CS"?u.csBase:null;
-    if(u.inPlaceTotal>0){hIP=true;totIP+=u.inPlaceTotal;}
+    if(u.inPlaceRent>0){hIP=true;totIP+=u.inPlaceRent;}
     if(pBase!==null){hBase=true;totBase+=pBase;}
     if(eff.il!==null){hIL=true;totIL+=eff.il;}
     if(eff.al!==null){hAL=true;totAL+=eff.al;}
