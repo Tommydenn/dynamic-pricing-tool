@@ -369,6 +369,7 @@ tbody td{padding:9px 12px;vertical-align:middle}
             <th>Last Published</th>
             <th>Days Ago</th>
             <th>Status</th>
+            <th>Current Sheet</th>
           </tr></thead>
           <tbody id="status-tbody"></tbody>
         </table>
@@ -1016,11 +1017,17 @@ async function loadPricingLog() {
           var fData = await fResp.json();
           var files = (fData.value || []).filter(function(f) { return f.file; });
           if (!files.length) return;
-          // Pick the most recently created file (xlsx or pdf — both stamped at publish time)
-          files.sort(function(a, b) {
-            return new Date(b.createdDateTime) - new Date(a.createdDateTime);
-          });
-          pricingLog[folder.name] = { timestamp: files[0].createdDateTime };
+          // Prefer xlsx for the link; fall back to whatever is newest
+          var xlsx = files.filter(function(f) { return f.name && f.name.toLowerCase().endsWith('.xlsx'); });
+          var target = xlsx.length ? xlsx[0] : files[0];
+          // Sort xlsx by newest first in case there are multiple
+          xlsx.sort(function(a, b) { return new Date(b.createdDateTime) - new Date(a.createdDateTime); });
+          if (xlsx.length) target = xlsx[0];
+          files.sort(function(a, b) { return new Date(b.createdDateTime) - new Date(a.createdDateTime); });
+          pricingLog[folder.name] = {
+            timestamp: files[0].createdDateTime,
+            webUrl: target.webUrl || ""
+          };
         } catch(e) { /* non-fatal — community just won't appear */ }
       }));
     } else if (resp.status !== 404) {
@@ -1055,17 +1062,23 @@ function renderStatusTable() {
     var daysCell   = "<span style='color:var(--text-tertiary)'>&mdash;</span>";
     var statusBadge = '<span class="status-never">Never published</span>';
 
+    var linkCell = "<span style='color:var(--text-tertiary)'>&mdash;</span>";
     if (entry && entry.timestamp) {
       var d    = new Date(entry.timestamp);
       dateCell = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       var days = Math.floor((now - d) / 86400000);
       daysCell = days === 0 ? "Today" : days === 1 ? "1 day" : days + " days";
-      if (days <= 7) {
+      if (days < 90) {
         statusBadge = '<span class="status-recent">&#10003; Current</span>';
-      } else if (days <= 30) {
-        statusBadge = '<span class="status-stale">&#9888; ' + days + ' days old</span>';
+      } else if (days < 180) {
+        statusBadge = '<span class="status-stale">&#9888; Review Soon</span>';
       } else {
-        statusBadge = '<span class="status-outdated">&#9888; Outdated</span>';
+        statusBadge = '<span class="status-outdated">&#9888; Older Rates</span>';
+      }
+      if (entry.webUrl) {
+        linkCell = '<a href="' + entry.webUrl + '" target="_blank" rel="noopener" '
+          + 'style="font-size:12px;color:var(--accent);text-decoration:none;font-family:\'DM Mono\',monospace;white-space:nowrap">'
+          + '&#128196; View sheet</a>';
       }
     }
     return '<tr>'
@@ -1073,6 +1086,7 @@ function renderStatusTable() {
       + '<td style="font-family:\'DM Mono\',monospace;font-size:12px">' + dateCell + '</td>'
       + '<td style="font-family:\'DM Mono\',monospace;font-size:12px;color:var(--text-secondary)">' + daysCell + '</td>'
       + '<td>' + statusBadge + '</td>'
+      + '<td>' + linkCell + '</td>'
       + '</tr>';
   });
   document.getElementById("status-tbody").innerHTML = rows.join("");
